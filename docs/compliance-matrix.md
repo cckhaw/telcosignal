@@ -28,8 +28,8 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | SC-08 | Actions pinned by commit SHA (version in comment) | ci.yml, deploy-production.yml | semgrep mutable-tag rule | met (pending CI) |
 | SC-09 | Minimal non-root, read-only containers | distroless nonroot Dockerfile; read-only in compose (M1) | docker/Dockerfile | Trivy | partial |
 | SC-10 | DAST on running sandbox | ZAP against compose sandbox | ci.yml `dast` | – | not met (sandbox arrives M1) |
-| DEP-01 | No preview deployments; prod only | `git.deploymentEnabled=false`; workflow on `main` push only | vercel.json, deploy-production.yml | config check | partial |
-| DEP-02 | Delete older deployments after latest READY | `scripts/vercel-cleanup.mjs` (fails closed) | scripts | first prod run | partial |
+| DEP-01 | No preview deployments; prod only | `git.deploymentEnabled=false`; workflow on `main` push only | vercel.json, deploy-production.yml | observed: 1 prod deployment, 0 previews (M0 report) | met |
+| DEP-02 | Delete older deployments after latest READY | `scripts/vercel-cleanup.mjs` (fails closed) | scripts | first run OK; delete path unexercised until 2nd merge | partial |
 | DEP-03 | Participant mTLS on hosting | Not possible on Vercel | docs/architecture.md §9 | – | needs human decision (D-003) |
 | DB-01 | Neon Singapore residency risk recorded | R-001 | threat-model.md | – | needs human decision (D-002) |
 | ID-xx … AUD-xx … PRIV-xx … | Remaining requirement rows are added per milestone with the feature | | | | not met (planned M1–M5) |
