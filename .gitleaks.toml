@@ -1,0 +1,4 @@
+title = "telco-signal gitleaks"
+[extend]
+useDefault = true
+# No allow-lists for secrets. Test fixtures must be generated at runtime, never committed.
