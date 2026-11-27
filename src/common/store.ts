@@ -7,10 +7,12 @@ export interface EphemeralStore {
   close(): Promise<void>;
 }
 export class RedisStore implements EphemeralStore {
+  readonly redis: Redis;
   private r: Redis;
   constructor(url: string) {
     this.r = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false, connectTimeout: 1000, lazyConnect: false });
     this.r.on("error", () => undefined);
+    this.redis = this.r;
   }
   async setNx(key: string, ttl: number): Promise<boolean> {
     return (await this.r.set(key, "1", "EX", ttl, "NX")) === "OK";

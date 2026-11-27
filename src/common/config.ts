@@ -12,6 +12,8 @@ export interface Config {
   telcoAllowList: string[];  // exact origins only
   telcoTimeoutMs: number;
   requestSkewSeconds: number;
+  rateLimitPerSecond: number;      // per client certificate, all routes
+  tokenRateLimitPerSecond: number; // per client certificate, token endpoint
 }
 function need(name: string): string {
   const v = process.env[name];
@@ -33,5 +35,7 @@ export function loadConfig(env = process.env): Config {
     telcoAllowList: need("TS_TELCO_ALLOWLIST").split(",").map((s) => s.trim()).filter(Boolean),
     telcoTimeoutMs: Number(process.env["TS_TELCO_TIMEOUT_MS"] ?? 2000),
     requestSkewSeconds: Number(process.env["TS_REQUEST_SKEW_SECONDS"] ?? 60),
+    rateLimitPerSecond: Number(process.env["TS_RATE_LIMIT_RPS"] ?? 100),
+    tokenRateLimitPerSecond: Number(process.env["TS_TOKEN_RATE_LIMIT_RPS"] ?? 10),
   };
 }

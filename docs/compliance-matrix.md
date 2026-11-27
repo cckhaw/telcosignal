@@ -40,7 +40,7 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | API-02 | Signed requests, timestamp, nonce, replay rejection | `verifyRequestSignature`, Redis NX | m1-acceptance "replay and request integrity", "fail closed when replay store is down" | met (sandbox) |
 | API-03 | Errors reveal no internals / no number existence | `common/errors.ts`; uniform UNAVAILABLE | m1-controls "errors reveal no internals", "signal safety" | met (sandbox) |
 | API-04 | Outbound allow-list; telco responses untrusted | `adapters/telcoA.ts` origin allow-list, size cap, strict Ajv, TLS verify | m1-controls signal-safety digits 3-7 | partial (Telco A only; B/C in M2) |
-| API-05 | Rate limits, enumeration detection | – | – | not met (M3) |
+| API-05 | Rate limits (baseline per client certificate, stricter on token endpoint, fail closed); enumeration detection | `@fastify/rate-limit` + Redis in `participant-api/server.ts` | m1-ratelimit | partial (per-signal/number-hash limits, quotas, enumeration detection = M3) |
 | DATA-01 | TLS 1.3 preferred / 1.2 min; mTLS | `participant-api/server.ts` | m1-controls "transport" | met (sandbox); edge/gateway not built (R-002/R-005) |
 | DATA-02 | Encryption at rest, field-level, KMS iface, rotation | `kms/`, Neon-at-rest (not yet) | m1-controls "KMS" | partial |
 | DATA-03 | No raw numbers in logs/audit/usage/DB | keyed HMAC, redaction, audit guard | m1-controls "privacy" | met (sandbox) |

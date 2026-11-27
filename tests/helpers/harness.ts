@@ -7,6 +7,7 @@ import { randomBytes, createPublicKey, X509Certificate } from "node:crypto";
 import { CompactSign, SignJWT, exportJWK, generateKeyPair, type JWK } from "jose";
 import { Agent, request } from "undici";
 import pg from "pg";
+import type { Redis } from "ioredis";
 import type { FastifyInstance } from "fastify";
 import { migrate } from "../../src/db/migrate.js";
 import { makePool, type Pool } from "../../src/db/pool.js";
@@ -44,7 +45,7 @@ export interface Harness {
 export const num = (last: string, mid = "0001") => `+6099900${mid}${last}`;   // synthetic, reserved-looking range
 const b64 = (n: number) => randomBytes(n).toString("base64url");
 
-export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number } = {}): Promise<Harness> {
+export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis } = {}): Promise<Harness> {
   if (!ADMIN_URL) throw new Error("TS_TEST_ADMIN_URL must point to a Postgres superuser URL for the test run");
   const work = mkdtempSync(join(tmpdir(), "ts-h-"));
   const dbName = `ts_t_${randomBytes(5).toString("hex")}`;
@@ -76,9 +77,11 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     tls: { cert: server.cert, key: server.key, participantCa: pki.caCert },
     issuer: "https://platform.test", audience: "telco-signal-api", tokenEndpoint: "https://localhost:0/oauth/token",
     kmsDir, auditSinkPath: auditSink, telcoAllowList: [telcoOrigin], telcoTimeoutMs: opts.telcoTimeoutMs ?? 700, requestSkewSeconds: 60,
+    rateLimitPerSecond: opts.rps ?? 5000, tokenRateLimitPerSecond: opts.tokenRps ?? 5000,   // high by default so functional tests are not throttled
   };
   const adapters = new Map([["telco-a", new TelcoAAdapter("telco-a", telcoOrigin, cfg.telcoAllowList, { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key }, cfg.telcoTimeoutMs)]]);
-  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters, log });
+  const rlRedis = opts.rateLimitRedis ?? (store instanceof RedisStore ? store.redis : undefined);
+  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters, log, ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const port = (app.server.address() as { port: number }).port;
   cfg.tokenEndpoint = `https://localhost:${port}/oauth/token`;

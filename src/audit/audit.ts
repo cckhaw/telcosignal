@@ -29,9 +29,9 @@ export class Audit {
       [e.correlationId, e.actor, e.action, e.orgId ?? "", e.outcome, detail],
     );
     const row = r.rows[0];
-    const canon = canonicalLine({ seq: row.seq, ts_us: row.ts_us, correlation_id: e.correlationId, actor: e.actor, action: e.action, org_id: e.orgId ?? "", outcome: e.outcome, detail_text: detail });
-    // External copy (mock WORM sink): append-only file outside the database.
-    appendFileSync(this.sinkPath, JSON.stringify({ seq: row.seq, hash: Buffer.from(row.hash).toString("hex"), prev: Buffer.from(row.prev_hash).toString("hex"), canon }) + "\n", { flag: "a", mode: 0o600 });
+    // External copy (mock WORM sink): append-only file outside the database. Only database-computed values (sequence and
+    // hashes) are written: no request-derived text ever reaches the file, and the verifier needs nothing more.
+    appendFileSync(this.sinkPath, JSON.stringify({ seq: String(row.seq), hash: Buffer.from(row.hash).toString("hex"), prev: Buffer.from(row.prev_hash).toString("hex") }) + "\n", { flag: "a", mode: 0o600 });
   }
 }
 

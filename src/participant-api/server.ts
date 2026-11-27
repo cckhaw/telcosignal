@@ -1,4 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import rateLimit from "@fastify/rate-limit";
+import type { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
 import type { TLSSocket } from "node:tls";
 import type { Logger } from "pino";
@@ -16,7 +18,7 @@ import { consentValid, createConsent, getConsent, revokeConsent, subjectHash } f
 import { routeNumber } from "../router/router.js";
 import { UUID_RE, validateCreateConsent, validateSimSwapCheck } from "./schemas.js";
 
-export interface Deps { cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: Map<string, TelcoAdapter>; log: Logger }
+export interface Deps { rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: Map<string, TelcoAdapter>; log: Logger }
 interface Ctx { client: ClientRec; thumb: string; scopes: string[]; correlationId: string }
 const TLS12_CIPHERS = "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
 
@@ -28,6 +30,21 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     onProtoPoisoning: "error", onConstructorPoisoning: "error",
   });
 
+  const peerThumb = (req: FastifyRequest): string => {
+    const s = req.raw.socket as TLSSocket;
+    const c = s.getPeerCertificate(false);
+    if (!s.authorized || !c?.raw) throw new ApiError("AUTHENTICATION_FAILED", "no verified client certificate");
+    return certThumbprint(c.raw);
+  };
+
+  // Rate limiting (abuse / brute-force / DoS): per client certificate, shared across instances via Redis. If Redis is
+  // unavailable the limiter errors and the request is refused (fail closed), never silently unlimited.
+  await app.register(rateLimit, {
+    global: true, max: d.cfg.rateLimitPerSecond, timeWindow: 1000, nameSpace: "ts-rl:", skipOnError: false,
+    ...(d.rateLimitRedis ? { redis: d.rateLimitRedis } : {}),
+    keyGenerator: (req) => { try { return peerThumb(req as unknown as FastifyRequest); } catch { return `ip:${req.ip}`; } },
+    errorResponseBuilder: () => Object.assign(new Error("rate limited"), { statusCode: 429 }),
+  });
   app.addHook("onSend", async (_req, reply, payload) => {
     reply.header("cache-control", "no-store").header("x-content-type-options", "nosniff").header("strict-transport-security", "max-age=63072000; includeSubDomains");
     return payload;
@@ -44,6 +61,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     let reason = "unhandled";
     if (err instanceof ApiError) { code = err.code; reason = err.reason; }
     else if ((err as { statusCode?: number }).statusCode === 413) { code = "PAYLOAD_TOO_LARGE"; reason = "body too large"; }
+    else if ((err as { statusCode?: number }).statusCode === 429) { code = "RATE_LIMITED"; reason = "rate limit exceeded"; }
     else if (((err as { statusCode?: number }).statusCode ?? 500) < 500) { code = "INVALID_REQUEST"; reason = (err as { code?: string }).code ?? "client error"; }
     else d.log.error({ correlation_id: cid, err_name: (err as Error).name }, "internal_error");   // no message/stack: may contain data
     const actor = (req as FastifyRequest & { actor?: string }).actor ?? "anonymous";
@@ -54,12 +72,6 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
   });
   app.setNotFoundHandler(async (req, reply) => { const p = problem("NOT_FOUND", req.id as string); return reply.code(404).send(p); });
 
-  const peerThumb = (req: FastifyRequest): string => {
-    const s = req.raw.socket as TLSSocket;
-    const c = s.getPeerCertificate(false);
-    if (!s.authorized || !c?.raw) throw new ApiError("AUTHENTICATION_FAILED", "no verified client certificate");
-    return certThumbprint(c.raw);
-  };
 
   async function authenticate(req: FastifyRequest, scope: string): Promise<Ctx> {
     const thumb = peerThumb(req);
@@ -77,7 +89,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
   };
 
   // ---------- token endpoint (client credentials + private_key_jwt, mTLS-bound) ----------
-  app.post("/oauth/token", async (req, reply) => {
+  app.post("/oauth/token", { config: { rateLimit: { max: d.cfg.tokenRateLimitPerSecond, timeWindow: 1000 } } }, async (req, reply) => {
     const cid = req.id as string;
     const thumb = peerThumb(req);
     const f = new URLSearchParams(req.body as string);
