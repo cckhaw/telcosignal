@@ -28,11 +28,11 @@ jobs:
         env:
           # Candidate secret names the Vercel Neon integration is known to create; the script picks the first direct *.neon.tech URL.
           NEON_CANDIDATES: |
-            ${{ secrets.DATABASE_URL_UNPOOLED }}
-            ${{ secrets.POSTGRES_URL_NON_POOLING }}
-            ${{ secrets.NEON_DATABASE_URL }}
-            ${{ secrets.DATABASE_URL }}
-            ${{ secrets.POSTGRES_URL }}
+            DATABASE_URL_UNPOOLED=${{ secrets.DATABASE_URL_UNPOOLED }}
+            POSTGRES_URL_NON_POOLING=${{ secrets.POSTGRES_URL_NON_POOLING }}
+            NEON_DATABASE_URL=${{ secrets.NEON_DATABASE_URL }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            POSTGRES_URL=${{ secrets.POSTGRES_URL }}
         run: node scripts/neon-verify.mjs neon-verify.json
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

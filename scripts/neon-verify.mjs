@@ -6,17 +6,23 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 const out = process.argv[2] ?? "neon-verify.json";
-const cands = (process.env.NEON_CANDIDATES ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+// NEON_CANDIDATES: lines of NAME=value (value = a secret). Only NAMES and non-secret URL shape facts are ever printed.
+const cands = (process.env.NEON_CANDIDATES ?? "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { const i = l.indexOf("="); return { name: l.slice(0, i), value: l.slice(i + 1) }; }).filter((c) => c.value);
 const report = { synthetic: true, started: new Date().toISOString(), steps: [] };
 const step = (name, ok, detail) => { report.steps.push({ name, ok, ...(detail ? { detail } : {}) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`); };
 const finish = (code) => { report.finished = new Date().toISOString(); writeFileSync(out, JSON.stringify(report, null, 1)); process.exit(code); };
 
-// 1. pick a Neon connection string; refuse anything that is not a Neon host (never run this against another database by accident)
-const pick = cands.find((u) => { try { return new URL(u).hostname.endsWith(".neon.tech") && !new URL(u).hostname.includes("-pooler"); } catch { return false; } });
-if (!pick) { step("find a direct (unpooled) Neon connection string among the configured secrets", false, `${cands.length} candidate(s) present; none is a direct *.neon.tech URL`); finish(1); }
+// 1. pick a Neon connection string; refuse anything that is not a Neon host (never run this against another database by accident).
+//    A pooled host (-pooler) is converted to the direct host (Neon convention) because the platform needs session features (roles, DDL, advisory locks).
+const shape = (c) => { try { const u = new URL(c.value); return { name: c.name, scheme: u.protocol, neonHost: u.hostname.endsWith(".neon.tech"), pooled: u.hostname.includes("-pooler"), port: u.port || "default", sslmode: u.searchParams.get("sslmode") ?? "none" }; } catch { return { name: c.name, parsable: false }; } };
+report.candidates = cands.map(shape); console.log("candidate shapes (no secrets):", JSON.stringify(report.candidates));
+const toDirect = (v) => { const u = new URL(v); u.hostname = u.hostname.replace("-pooler", ""); u.searchParams.delete("pgbouncer"); u.searchParams.delete("channel_binding"); return u.toString(); };
+const found = cands.find((c) => { try { const u = new URL(c.value); return u.protocol.startsWith("postgres") && u.hostname.endsWith(".neon.tech"); } catch { return false; } });
+if (!found) { step("find a Neon connection string among the configured secrets", false, `${cands.length} candidate(s) present; none is a postgres URL on a *.neon.tech host`); finish(1); }
+const pick = toDirect(found.value); report.secret_used = found.name;
 const u = new URL(pick);
-report.region_hint = u.hostname.split(".").slice(-4, -3)[0];      // e.g. aws-region part of the host; not a secret
-step("found a direct Neon connection string", true);
+report.region_hint = u.hostname.split(".").slice(-4, -3)[0];
+step(`found a Neon connection string (secret ${found.name}${shape(found).pooled ? ", pooled host converted to direct" : ""})`, true);
 
 const admin = new pg.Client({ connectionString: pick, ssl: { rejectUnauthorized: true } });
 try { await admin.connect(); } catch (e) { step("connect (TLS verified)", false, String(e.message).replace(/postgres:\/\/\S+/g, "[url]")); finish(1); }
