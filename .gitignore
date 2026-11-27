@@ -17,3 +17,4 @@ mocks.log
 dast-admin-report.json
 admin.log
 idp.log
+worker.log

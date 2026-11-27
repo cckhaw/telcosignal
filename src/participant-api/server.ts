@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { TLSSocket } from "node:tls";
 import type { Logger } from "pino";
 import type { Config } from "../common/config.js";
-import { ApiError, problem, type ErrorCode } from "../common/errors.js";
+import { ApiError, ERRORS, problem, type ErrorCode } from "../common/errors.js";
 import type { Pool } from "../db/pool.js";
 import { withOrgTx } from "../db/pool.js";
 import type { EphemeralStore } from "../common/store.js";
@@ -18,6 +18,7 @@ import { consentValid, createConsent, getConsent, revokeConsent, subjectHash } f
 import { routeNumber } from "../router/router.js";
 import type { Limiter } from "../ratelimit/limits.js";
 import type { AbuseDetector } from "../abuse/enumeration.js";
+import { classifyReason } from "../resilience/classify.js";
 import { KYC_FIELDS, UUID_RE, validateCallForwardingCheck, validateCreateConsent, validateDeviceSwapCheck, validateKycMatch, validateSimSwapCheck } from "./schemas.js";
 import type { KycInput } from "../adapters/types.js";
 import type { Signal } from "../consent/consent.js";
@@ -49,6 +50,33 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     keyGenerator: (req) => { try { return peerThumb(req as unknown as FastifyRequest); } catch { return `ip:${req.ip}`; } },
     errorResponseBuilder: () => Object.assign(new Error("rate limited"), { statusCode: 429 }),
   });
+  // ---------- request tracing: step timings + one request_log row per request (written AFTER the response, never on the request path) ----------
+  interface Lc { orgId?: string; clientId?: string; signal?: string; outcome?: string; errorCode?: string; telcoId?: string; telcoMs?: number; reason?: string; reasonClass?: string; subjectRef?: string }
+  interface Tr { t0: number; last: number; steps: Array<{ s: string; ms: number }>; lc: Lc }
+  const trOf = (req: FastifyRequest) => (req as FastifyRequest & { tr?: Tr }).tr as Tr;
+  const lap = (req: FastifyRequest, name: string) => { const t = trOf(req); const n = performance.now(); t.steps.push({ s: name, ms: Math.round((n - t.last) * 10) / 10 }); t.last = n; };
+  const pendingLogs = new Set<Promise<void>>();
+  app.decorate("drainLogs", async () => { await Promise.allSettled([...pendingLogs]); });
+  const routeTable: Array<{ method: string; url: string }> = [];
+  app.addHook("onRoute", (r) => { for (const m of ([] as string[]).concat(r.method as string | string[])) if (m !== "HEAD") routeTable.push({ method: m, url: r.url }); });
+  app.decorate("routeTable", routeTable);
+  app.addHook("onRequest", async (req) => { const t = performance.now(); (req as FastifyRequest & { tr?: Tr }).tr = { t0: t, last: t, steps: [], lc: {} }; });
+  app.addHook("onResponse", async (req, reply) => {
+    const t = trOf(req); const route = req.routeOptions?.url;
+    if (!t || !route || !["GET", "POST"].includes(req.method)) return;       // unmatched paths are not logged (no attacker-controlled strings in the log)
+    const lc = t.lc, status = reply.statusCode, total = Math.round(performance.now() - t.t0);
+    const outcome = lc.outcome ?? (status >= 500 ? "ERROR" : status >= 400 ? "REJECTED" : "OK");
+    const reason = (lc.reason ?? "").replace(/\+[0-9]{5,}/g, "[n]").slice(0, 200);
+    const p = (async () => {
+      try {
+        await d.pool.query(
+          `INSERT INTO request_log(correlation_id, org_id, client_id, method, route, signal, http_status, outcome, error_code, telco_id, reason_class, reason, total_ms, telco_ms, steps, subject_ref)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)`,
+          [String(req.id), lc.orgId ?? null, lc.clientId ?? null, req.method, route, lc.signal ?? null, status, outcome, lc.errorCode ?? null, lc.telcoId ?? null, lc.reasonClass ?? classifyReason(outcome, reason), reason, total, Math.round(lc.telcoMs ?? 0), JSON.stringify(t.steps), lc.subjectRef ?? null]);
+      } catch { d.log.error({ correlation_id: String(req.id) }, "request_log_write_failed"); }     // observability must never break serving; the failure itself is logged
+    })();
+    pendingLogs.add(p); void p.finally(() => pendingLogs.delete(p));
+  });
   app.addHook("onSend", async (_req, reply, payload) => {
     reply.header("cache-control", "no-store").header("x-content-type-options", "nosniff").header("strict-transport-security", "max-age=63072000; includeSubDomains");
     return payload;
@@ -68,6 +96,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     else if ((err as { statusCode?: number }).statusCode === 429) { code = "RATE_LIMITED"; reason = "rate limit exceeded"; }
     else if (((err as { statusCode?: number }).statusCode ?? 500) < 500) { code = "INVALID_REQUEST"; reason = (err as { code?: string }).code ?? "client error"; }
     else d.log.error({ correlation_id: cid, err_name: (err as Error).name }, "internal_error");   // no message/stack: may contain data
+    { const t = trOf(req); if (t) { t.lc.errorCode = code; t.lc.reason = t.lc.reason ?? reason; if (!t.lc.outcome) t.lc.outcome = ERRORS[code].status >= 500 ? "ERROR" : "REJECTED"; } }
     const actor = (req as FastifyRequest & { actor?: string }).actor ?? "anonymous";
     secEvent({ cid, action: `request.${code.toLowerCase()}`, outcome: "failure", actor, reason });
     if (code !== "INTERNAL") await d.audit.record({ correlationId: cid, actor, action: "request.rejected", outcome: code, detail: { reason } }).catch(() => undefined);
@@ -83,8 +112,10 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     if (!h?.startsWith("Bearer ") || h.length > 4096) throw new ApiError("AUTHENTICATION_FAILED", "missing bearer token");
     const claims = await verifyAccessToken(d.kms, { issuer: d.cfg.issuer, audience: d.cfg.audience }, h.slice(7), thumb);
     (req as FastifyRequest & { actor?: string }).actor = claims.clientId;
+    trOf(req).lc.clientId = claims.clientId;
     const client = await lookupClient(d.pool, claims.clientId);          // revocation/suspension takes effect immediately
     if (!client || !clientUsable(client)) throw new ApiError("AUTHENTICATION_FAILED", "client not usable");
+    trOf(req).lc.orgId = client.orgId;
     if (!claims.scopes.includes(scope) || !client.scopes.includes(scope)) throw new ApiError("ACCESS_DENIED", `scope ${scope} not granted`);
     return { client, thumb, scopes: claims.scopes, correlationId: req.id as string };
   }
@@ -178,44 +209,49 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
   for (const def of SIGNAL_DEFS) {
     app.post(def.path, async (req, reply) => {
       const t0 = performance.now();
-      const ctx = await authenticate(req, def.scope);
+      const ctx = await authenticate(req, def.scope); trOf(req).lc.signal = def.signal; lap(req, "auth");
       await verifyRequestSignature(d.pool, d.store, { jws: hdr(req, "x-request-signature"), clientId: ctx.client.clientId, thumb: ctx.thumb, method: "POST", path: def.path, rawBody: req.body as Buffer, skewSeconds: d.cfg.requestSkewSeconds });
+      lap(req, "signature");
       const b = parseBody(req.body);
       if (!def.validate(b)) throw new ApiError("INVALID_REQUEST", "schema");
+      lap(req, "validate");
       const body = b as { phoneNumber: string; maxAge?: number; purposeCode: string; consentRef: string } & KycInput;
       const org = ctx.client.orgId;
-      const meter = async (outcome: string, telco: string | null, telcoMs: number) => {
+      const meter = async (outcome: string, telco: string | null, telcoMs: number, reasonClass = "rejected") => {
         const billable = outcome === "TRUE" || outcome === "FALSE";   // no charge on platform/telco failure, unsupported or rejection
         await withOrgTx(d.pool, org, (tx) => tx.query(
-          "INSERT INTO usage_record(org_id, signal, telco_id, outcome, billable, total_ms, telco_ms, correlation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-          [org, def.signal, telco, outcome, billable, Math.max(0, Math.round(performance.now() - t0)), Math.round(telcoMs), ctx.correlationId]));
+          "INSERT INTO usage_record(org_id, signal, telco_id, outcome, billable, total_ms, telco_ms, correlation_id, reason_class) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+          [org, def.signal, telco, outcome, billable, Math.max(0, Math.round(performance.now() - t0)), Math.round(telcoMs), ctx.correlationId, reasonClass]));
       };
 
       // Kill switches fail closed: if state cannot be read, the request is not served.
       const ks = await d.pool.query("SELECT scope FROM kill_switch WHERE enabled AND ((scope='participant' AND key=$1) OR (scope='signal' AND key=$2))", [ctx.client.clientId, def.signal]);
-      if (ks.rows.some((r) => r.scope === "participant")) { await meter("REJECTED", null, 0); throw new ApiError("ACCESS_DENIED", "participant kill switch"); }
+      if (ks.rows.some((r) => r.scope === "participant")) { await meter("REJECTED", null, 0, "kill_switch"); throw new ApiError("ACCESS_DENIED", "participant kill switch"); }
       const sg = await d.pool.query("SELECT enabled FROM signals WHERE id = $1", [def.signal]);
       const signalOn = sg.rows[0]?.enabled === true && !ks.rows.some((r) => r.scope === "signal");
 
+      lap(req, "policy");
       // Entitlement: the organisation must be allowed this signal for this purpose (set during onboarding, changed only with approval).
       const ent = await d.pool.query("SELECT purposes FROM org_entitlement WHERE org_id=$1 AND signal=$2", [org, def.signal]).catch(() => { throw new ApiError("SERVICE_UNAVAILABLE", "entitlement lookup failed"); });
-      if (!(ent.rows[0]?.purposes as string[] | undefined)?.includes(body.purposeCode)) { await meter("REJECTED", null, 0); throw new ApiError("ACCESS_DENIED", "signal/purpose not entitled"); }
+      if (!(ent.rows[0]?.purposes as string[] | undefined)?.includes(body.purposeCode)) { await meter("REJECTED", null, 0, "rejected"); throw new ApiError("ACCESS_DENIED", "signal/purpose not entitled"); }
       // Hard quotas first (cheap, before any consent/DB/telco work). Exceeding one is a generic 429; fail closed if the limiter store is down.
-      const hash = await subjectHash(d.kms, body.phoneNumber);
+      const hash = await subjectHash(d.kms, body.phoneNumber); trOf(req).lc.subjectRef = hash.toString("hex").slice(0, 8);
       try {
         await d.limiter.participantSignal(org, def.signal);
         await d.limiter.subject(org, hash.toString("hex").slice(0, 32));
-      } catch (e) { if (e instanceof ApiError && e.code === "RATE_LIMITED") await meter("REJECTED", null, 0); throw e; }
+      } catch (e) { if (e instanceof ApiError && e.code === "RATE_LIMITED") await meter("REJECTED", null, 0, "limit"); throw e; }
+      lap(req, "limits");
       const consentOk = await withOrgTx(d.pool, org, (tx) => consentValid(tx, { consentRef: body.consentRef, subjectHash: hash, purpose: body.purposeCode, signal: def.signal }));
       // Enumeration / bulk-lookup heuristics see every attempt, including ones without valid consent (probing).
       await d.abuse.observe({ orgId: org, clientId: ctx.client.clientId, msisdn: body.phoneNumber, correlationId: ctx.correlationId, consentOk });
-      if (!consentOk) { await meter("REJECTED", null, 0); throw new ApiError("CONSENT_REQUIRED", "consent missing, expired, revoked, wrong subject/purpose/signal"); }
+      lap(req, "consent");
+      if (!consentOk) { await meter("REJECTED", null, 0, "rejected"); throw new ApiError("CONSENT_REQUIRED", "consent missing, expired, revoked, wrong subject/purpose/signal"); }
 
       let status: "TRUE" | "FALSE" | "UNAVAILABLE" | "NOT_SUPPORTED" = "UNAVAILABLE", telcoId: string | null = null, telcoMs = 0, reason = "no route";
       let fields: Record<string, string> | undefined;
       if (!signalOn) reason = "signal disabled";
       else {
-        const route = await routeNumber(d.pool, d.kms, body.phoneNumber, def.signal);
+        const route = await routeNumber(d.pool, d.kms, body.phoneNumber, def.signal); lap(req, "route");
         if (route.kind !== "none") telcoId = route.telcoId;
         if (route.kind === "unsupported") { status = "NOT_SUPPORTED"; reason = "telco does not cover this signal"; }
         else if (route.kind === "route") {
@@ -228,12 +264,15 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
             const kyc: KycInput = {};
             if (def.signal === "KYC_MATCH") for (const f of KYC_FIELDS) { const v = (body as Record<string, unknown>)[f]; if (typeof v === "string") kyc[f] = v; }
             const r = await adapter.call({ signal: def.signal, msisdn: body.phoneNumber, ...(def.maxAge && body.maxAge !== undefined ? { maxAgeHours: body.maxAge } : {}), ...(def.signal === "KYC_MATCH" ? { kyc } : {}), correlationId: ctx.correlationId });
-            status = r.status; telcoMs = r.telcoMs; reason = r.reason; fields = r.fields;
+            status = r.status; telcoMs = r.telcoMs; reason = r.reason; fields = r.fields; lap(req, "adapter");
           }
         }
       }
-      await meter(status, telcoId, telcoMs);
+      const rc = classifyReason(status, reason);
+      Object.assign(trOf(req).lc, { outcome: status, telcoId: telcoId ?? undefined, telcoMs, reason, reasonClass: rc });
+      await meter(status, telcoId, telcoMs, rc);
       await d.audit.record({ correlationId: ctx.correlationId, actor: ctx.client.clientId, action: `signal.${def.signal.toLowerCase()}.check`, orgId: org, outcome: status, detail: { telco: telcoId ?? "none", telco_ms: Math.round(telcoMs), reason } });
+      lap(req, "finalise");
       return reply.send({ signal: def.signal, result: status, ...(fields ? { fields } : {}), correlationId: ctx.correlationId });
     });
   }

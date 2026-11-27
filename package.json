@@ -20,7 +20,10 @@
     "dast": "tsx tests/dast/run.ts .sandbox https://localhost:8443",
     "sandbox:admin": "tsx src/admin/main.ts",
     "sandbox:idp": "tsx mock/run-idp.ts",
-    "dast:admin": "tsx tests/dast/admin.ts .sandbox"
+    "dast:admin": "tsx tests/dast/admin.ts .sandbox",
+    "gen:openapi": "tsx scripts/gen-openapi.ts",
+    "gen:portal": "tsx scripts/build-portal.ts",
+    "worker": "tsx src/worker/main.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -30,7 +33,8 @@
     "globals": "17.14.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.74.0",
-    "vitest": "5.1.2"
+    "vitest": "5.1.2",
+    "yaml": "2.9.1"
   },
   "dependencies": {
     "@fastify/rate-limit": "11.3.0",

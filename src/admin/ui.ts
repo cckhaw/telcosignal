@@ -20,6 +20,8 @@ const NAV: Array<[string, string, string[]]> = [
   ["/", "Home", []], ["/orgs", "Organisations", []], ["/changes", "Changes", []], ["/config", "Configuration", ["platform_admin", "operations", "integration_engineer", "security_auditor", "finance"]],
   ["/history", "History", ["platform_admin", "operations", "integration_engineer", "security_auditor", "finance"]], ["/credentials", "Credentials", []],
   ["/killswitches", "Kill switches", ["platform_admin", "operations", "security_auditor"]], ["/integration", "Integration", ["platform_admin", "operations", "integration_engineer", "security_auditor"]],
+  ["/dashboard", "Dashboard", []], ["/logs", "Logs", []], ["/alerts", "Alerts", ["platform_admin", "operations", "security_auditor"]], ["/audit", "Audit trail", ["platform_admin", "security_auditor"]],
+  ["/health", "Health", ["platform_admin", "operations", "integration_engineer", "security_auditor"]], ["/errors", "Error catalogue", []],
 ];
 export function page(o: { title: string; nonce: string; user?: PageUser; csrf?: string; body: Raw }): string {
   const nav = o.user ? h`<nav>${NAV.filter(([, , roles]) => roles.length === 0 || roles.includes(o.user!.role)).map(([href, label]) => h`<a href="${href}">${label}</a> `)}

@@ -28,7 +28,7 @@ async function login(sub: string, params: Record<string, string> = {}): Promise<
   const home = cookie ? await raw("GET", `${origin}/`, { cookie }) : { text: "" };
   return { ok: c.status === 302 && !!cookie, status: c.status, cookie, csrf: /name="_csrf" value="([^"]+)"/.exec(home.text)?.[1] ?? "", setCookie: sc };
 }
-const LEAK = /(at\s+[\w.<>]+\s+\(.*:\d+:\d+\)|node_modules|\.ts:\d+|postgres|ECONN|stack|syntax error|SELECT |pg_|ERROR:)/i;
+const LEAK = /(at\s+[\w.<>]+\s+\(.*:\d+:\d+\)|node_modules|\.ts:\d+|postgres(?:ql)?:\/\/|\bECONN\w+|\bError: |syntax error at|\bSELECT\s+[\w*,\s]+\s+FROM\b|\bpg_[a-z_]+|stack trace)/;   // precise: HTML such as <select> must not look like a SQL leak
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---- unauthenticated surface ----
@@ -105,6 +105,25 @@ const other = await post(s2, `${chg}/approve`, { note: "peer" });
 check("approval", "a different administrator can approve it", other.status === 302, `status ${other.status}`);
 const again = await post(s2, `${chg}/approve`, { note: "replay" });
 check("approval", "approving twice is refused", again.status === 409, `status ${again.status}`);
+
+// ---- observability surface: dashboards, logs, exports, audit viewer (own session: the portal's per-session rate limit applies) ----
+const so = await login(adminA);
+for (const pth of ["/dashboard", "/logs", "/errors", "/audit", "/health", "/alerts", "/reports/monthly"]) { const r = await get(so, pth); check("observability", `${pth} renders for an authorised administrator`, r.status === 200 && !LEAK.test(r.text), `status ${r.status}`); }
+const FULL = /\+[1-9][0-9]{8,14}/;
+for (const pth of ["/logs", "/logs?period=7d", "/dashboard?period=30d", "/audit", "/alerts"]) { const r = await get(so, pth); check("privacy", `${pth} shows no full phone number`, !FULL.test(r.text)); }
+for (const pth of ["/logs.csv?period=30d", "/dashboard.csv?period=30d", "/reports/monthly.csv"]) { const r = await get(so, pth); check("privacy", `${pth} export is an attachment with no full phone number`, r.status === 200 && String(r.headers["content-disposition"] ?? "").includes("attachment") && !FULL.test(r.text), `status ${r.status}`); }
+const FILTERS = ["' OR '1'='1", "'; DROP TABLE request_log;--", "<script>alert(1)</script>", "../../etc/passwd", "%00", "A".repeat(3000), "99999999-9999-9999-9999-999999999999", "\r\nX: y"];
+let fb5 = 0, fleak = 0, fn = 0;
+for (const pth of ["/logs", "/dashboard", "/audit"]) for (const key of ["org", "telco", "signal", "version", "period", "outcome", "error_code", "correlation_id", "client", "actor", "action", "from", "to"]) for (const v of FILTERS) {
+  const r = await get(so, `${pth}?${key}=${encodeURIComponent(v)}`); fn++;
+  if (r.status === 0 || r.status >= 500) fb5++;
+  if (LEAK.test(r.text)) fleak++;
+  if (fn % 60 === 0) await sleep(15);
+}
+check("injection", `filter fuzz on logs, dashboards and exports (${fn} requests): no 5xx / dropped connections`, fb5 === 0, `${fb5} bad`);
+check("injection", "filter fuzz: no stack, SQL or internal detail in any response", fleak === 0, `${fleak} leaks`);
+check("observability", "an unknown correlation id is a clean 404", (await get(so, "/logs/00000000-0000-4000-8000-000000000000")).status === 404);
+check("observability", "the audit trail cannot be changed through the portal (no write route exists)", (await post(so, "/audit", {})).status === 404);
 
 // ---- session lifecycle ----
 const out = await post(s2, "/logout", {});

@@ -41,8 +41,8 @@ export type Json = any;
 export interface TestClient { name: string; orgId: string; pem: Pem; key: CryptoKey | Awaited<ReturnType<typeof generateKeyPair>>["privateKey"]; kid: string; thumb: string; agent: Agent }
 export interface ReqOpts { body?: unknown; rawBody?: string; token?: string | null; sign?: boolean; signAs?: TestClient; iat?: number; jti?: string; headers?: Record<string, string>; agentOf?: TestClient; contentType?: string; tamperAfterSign?: string }
 export interface Harness {
-  cfg: Config; app: FastifyInstance; port: number; pool: Pool; migrator: Pool; reporting: Pool; billing: Pool; store: EphemeralStore; kms: LocalKms; audit: Audit;
-  pki: TestPki; registry: AdapterRegistry; platformOut: Pem; breakers: Map<string, ResilientAdapter>; telco: MockTelco; telcoB: MockTelco; aggregator: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string; billing: string; admin: string };
+  cfg: Config; app: FastifyInstance & { drainLogs(): Promise<void>; routeTable: Array<{ method: string; url: string }> }; port: number; pool: Pool; migrator: Pool; reporting: Pool; billing: Pool; worker: Pool; store: EphemeralStore; kms: LocalKms; audit: Audit;
+  pki: TestPki; registry: AdapterRegistry; platformOut: Pem; breakers: Map<string, ResilientAdapter>; telco: MockTelco; telcoB: MockTelco; aggregator: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string; billing: string; admin: string; worker: string };
   orgA: string; orgB: string; orgC: string; bankA: TestClient; bankB: TestClient; bankC: TestClient; adminUrl: string; dbName: string;
   newClient(name: string, orgId: string, scopes: string[], o?: { pem?: Pem; registerCert?: string }): Promise<TestClient>;
   assertion(c: TestClient, o?: { aud?: string; exp?: number; iat?: number; jti?: string; alg?: string; iss?: string }): Promise<string>;
@@ -62,9 +62,9 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const dbName = `ts_t_${randomBytes(5).toString("hex")}`;
   execFileSync("node", ["scripts/db-setup.mjs", ADMIN_URL, dbName, join(work, "db.env")], { stdio: "pipe" });
   const env = Object.fromEntries(readFileSync(join(work, "db.env"), "utf8").trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
-  const urls = { migrator: env["TS_MIGRATOR_URL"]!, app: env["TS_DATABASE_URL"]!, reporting: env["TS_REPORTING_URL"]!, billing: env["TS_BILLING_URL"]!, admin: env["TS_ADMIN_DB_URL"]! };
+  const urls = { migrator: env["TS_MIGRATOR_URL"]!, app: env["TS_DATABASE_URL"]!, reporting: env["TS_REPORTING_URL"]!, billing: env["TS_BILLING_URL"]!, admin: env["TS_ADMIN_DB_URL"]!, worker: env["TS_WORKER_URL"]! };
   await migrate(urls.migrator, "migrations");
-  const pool = makePool(urls.app), migrator = makePool(urls.migrator), reporting = makePool(urls.reporting), billing = makePool(urls.billing);
+  const pool = makePool(urls.app), migrator = makePool(urls.migrator), reporting = makePool(urls.reporting), billing = makePool(urls.billing), worker = makePool(urls.worker);
 
   const pki = new TestPki();
   const server = pki.issue("platform-server", { server: true });
@@ -181,11 +181,11 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     if (r.status !== 201) throw new Error(`consent create failed ${r.status}`);
     return { ref, id: r.json.id as string };
   };
-  Object.assign(h, { registry, platformOut, breakers, cfg, app, port, pool, migrator, reporting, billing, store, kms, audit, pki, telco, telcoB, aggregator, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
+  Object.assign(h, { registry, platformOut, breakers, cfg, app, port, pool, migrator, reporting, billing, worker, store, kms, audit, pki, telco, telcoB, aggregator, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
   h.stop = async () => {
     await app.close(); await telco.close(); await telcoB.close(); await aggregator.close(); for (const a of agents) await a.close();
     for (const ad of breakers.values()) await ad.close(); await registry.close();
-    await pool.end(); await migrator.end(); await reporting.end(); await billing.end(); await store.close();
+    await pool.end(); await migrator.end(); await reporting.end(); await billing.end(); await worker.end(); await store.close();
     const adm = new pg.Client({ connectionString: ADMIN_URL }); await adm.connect(); await adm.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`); await adm.end();
     rmSync(work, { recursive: true, force: true }); rmSync(pki.dir, { recursive: true, force: true });
     void createPublicKey;

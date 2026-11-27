@@ -31,7 +31,9 @@ export async function buildChange(kind: string, f: Record<string, string>, ctx: 
       const key = need(f, "key"); const v = json(f, "value");
       if (key === "consent.max_days" && !(Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 400)) throw new InputError("consent.max_days must be an integer 1..400");
       if (key === "sandbox.allow_loopback" && typeof v !== "boolean") throw new InputError("sandbox.allow_loopback must be true or false");
-      if (!["consent.max_days", "sandbox.allow_loopback"].includes(key)) throw new InputError("unknown setting");
+      if (key === "logs.retention_days" && !(Number.isInteger(v) && (v as number) >= 7 && (v as number) <= 3650)) throw new InputError("logs.retention_days must be an integer 7..3650");
+      if (key === "consent.retention_days" && !(Number.isInteger(v) && (v as number) >= 30 && (v as number) <= 3650)) throw new InputError("consent.retention_days must be an integer 30..3650");
+      if (!["consent.max_days", "sandbox.allow_loopback", "logs.retention_days", "consent.retention_days"].includes(key)) throw new InputError("unknown setting");
       return { kind, target: `setting:${key}`, orgId: null, payload: { key, value: v } };
     }
     case "ROUTING":
