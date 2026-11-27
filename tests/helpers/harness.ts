@@ -56,7 +56,7 @@ export const numB = (last: string, mid = "0001") => `+6099901${mid}${last}`;   /
 export const numC = (last: string, mid = "0001") => `+6099902${mid}${last}`;   // Telco C range (via aggregator)
 const b64 = (n: number) => randomBytes(n).toString("base64url");
 
-export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis; limits?: Partial<LimitConfig>; abuse?: Partial<AbuseConfig>; resilience?: Partial<ResilienceConfig>; useRegistry?: boolean } = {}): Promise<Harness> {
+export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis; limits?: Partial<LimitConfig>; abuse?: Partial<AbuseConfig>; resilience?: Partial<ResilienceConfig>; useRegistry?: boolean; minResponseMs?: number; telemetry?: import("../../src/telemetry/otel.js").Telemetry } = {}): Promise<Harness> {
   if (!ADMIN_URL) throw new Error("TS_TEST_ADMIN_URL must point to a Postgres superuser URL for the test run");
   const work = mkdtempSync(join(tmpdir(), "ts-h-"));
   const dbName = `ts_t_${randomBytes(5).toString("hex")}`;
@@ -89,7 +89,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     databaseUrl: urls.app, redisUrl: REDIS_URL, participantPort: 0,
     tls: { cert: server.cert, key: server.key, participantCa: pki.caCert }, telcoMtls: { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key },
     issuer: "https://platform.test", audience: "telco-signal-api", tokenEndpoint: "https://localhost:0/oauth/token",
-    kmsDir, auditSinkPath: auditSink, telcoAllowList: [telcoOrigin, `https://localhost:${telcoB.port}`, `https://localhost:${aggregator.port}`], telcoTimeoutMs: opts.telcoTimeoutMs ?? 700, requestSkewSeconds: 60,
+    kmsDir, auditSinkPath: auditSink, telcoAllowList: [telcoOrigin, `https://localhost:${telcoB.port}`, `https://localhost:${aggregator.port}`], telcoTimeoutMs: opts.telcoTimeoutMs ?? 700, requestSkewSeconds: 60, minResponseMs: opts.minResponseMs ?? 0,
     rateLimitPerSecond: opts.rps ?? 5000, tokenRateLimitPerSecond: opts.tokenRps ?? 5000,   // high by default so functional tests are not throttled
     limits: DEFAULT_LIMITS_T, abuse: DEFAULT_ABUSE_T, resilience: DEFAULT_RESILIENCE,   // replaced just below with test values
   };
@@ -103,14 +103,14 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const rlRedis = opts.rateLimitRedis ?? (store instanceof RedisStore ? store.redis : undefined);
   // Functional tests run with effectively-unlimited quotas / no breaker unless a test opts in, so they exercise one control at a time.
   const HUGE = 1_000_000;
-  cfg.limits = { perParticipantSignalPerMinute: HUGE, perTelcoPerSecond: HUGE, perSubjectPerHour: HUGE, ...opts.limits };
+  cfg.limits = { perParticipantSignalPerMinute: HUGE, perTelcoPerSecond: HUGE, perSubjectPerHour: HUGE, perParticipantConsentPerMinute: HUGE, ...opts.limits };
   cfg.abuse = { windowSeconds: 600, distinctSubjects: HUGE, sameRangeSubjects: HUGE, consentFailures: HUGE, autoSuspend: false, ...opts.abuse };
   cfg.resilience = { ...DEFAULT_RESILIENCE, minRequests: HUGE, ...opts.resilience };
   const limiter = new Limiter(store, pool, cfg.limits);
   const abuse = new AbuseDetector(store, pool, kms, audit, log, cfg.abuse);
   const breakers = new Map<string, ResilientAdapter>([...adapters].map(([id, a]) => [id, new ResilientAdapter(a, cfg.resilience)]));
   const registry = new AdapterRegistry(pool, { mtls, timeoutMs: cfg.telcoTimeoutMs, resilience: cfg.resilience, envAllowList: cfg.telcoAllowList, ttlMs: 50, allowLoopback: true });
-  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters: opts.useRegistry ? registry : breakers, log, limiter, abuse, ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
+  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters: opts.useRegistry ? registry : breakers, log, limiter, abuse, ...(opts.telemetry ? { telemetry: opts.telemetry } : {}), ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const port = (app.server.address() as { port: number }).port;
   cfg.tokenEndpoint = `https://localhost:${port}/oauth/token`;

@@ -66,7 +66,7 @@ const env: Record<string, string> = {
   TS_TELCO_CA_FILE: ca, TS_TELCO_CLIENT_CERT_FILE: files.outCert, TS_TELCO_CLIENT_KEY_FILE: files.outKey,
   TS_ISSUER: "https://platform.sandbox.invalid", TS_TOKEN_ENDPOINT: `https://localhost:${port}/oauth/token`, TS_KMS_DIR: join(out, "kms"),
   TS_AUDIT_SINK: w("audit-sink.jsonl", ""), TS_TELCO_ALLOWLIST: [ports.a, ports.b, ports.c].map((p) => o(String(p))).join(","),
-  TS_BILLING_URL: dbEnv["TS_BILLING_URL"]!, TS_RATE_LIMIT_RPS: process.env["TS_RATE_LIMIT_RPS"] ?? "100", TS_TOKEN_RATE_LIMIT_RPS: process.env["TS_TOKEN_RATE_LIMIT_RPS"] ?? "10",
+  TS_BILLING_URL: dbEnv["TS_BILLING_URL"]!, TS_ALLOW_LOOPBACK: "true", TS_RATE_LIMIT_RPS: process.env["TS_RATE_LIMIT_RPS"] ?? "100", TS_TOKEN_RATE_LIMIT_RPS: process.env["TS_TOKEN_RATE_LIMIT_RPS"] ?? "10",
   MOCK_CERT_FILE: files.telcoCert, MOCK_KEY_FILE: files.telcoKey, MOCK_CLIENT_CA_FILE: ca, MOCK_A_PORT: String(ports.a), MOCK_B_PORT: String(ports.b), MOCK_C_PORT: String(ports.c),
 };
 const adminEnv: Record<string, string> = {

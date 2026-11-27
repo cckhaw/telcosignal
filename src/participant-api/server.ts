@@ -22,8 +22,9 @@ import { classifyReason } from "../resilience/classify.js";
 import { KYC_FIELDS, UUID_RE, validateCallForwardingCheck, validateCreateConsent, validateDeviceSwapCheck, validateKycMatch, validateSimSwapCheck } from "./schemas.js";
 import type { KycInput } from "../adapters/types.js";
 import type { Signal } from "../consent/consent.js";
+import { NOOP_TELEMETRY, type Telemetry } from "../telemetry/otel.js";
 
-export interface Deps { limiter: Limiter; abuse: AbuseDetector; rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: AdapterSource; log: Logger }
+export interface Deps { limiter: Limiter; abuse: AbuseDetector; rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: AdapterSource; log: Logger; telemetry?: Telemetry }
 interface Ctx { client: ClientRec; thumb: string; scopes: string[]; correlationId: string }
 const TLS12_CIPHERS = "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
 
@@ -67,6 +68,9 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     const lc = t.lc, status = reply.statusCode, total = Math.round(performance.now() - t.t0);
     const outcome = lc.outcome ?? (status >= 500 ? "ERROR" : status >= 400 ? "REJECTED" : "OK");
     const reason = (lc.reason ?? "").replace(/\+[0-9]{5,}/g, "[n]").slice(0, 200);
+    // OpenTelemetry: after the response, from timings already measured; only allow-listed attributes can leave the process (T-064).
+    (d.telemetry ?? NOOP_TELEMETRY).request({ startMs: t.t0, endMs: t.t0 + total, steps: t.steps, failed: status >= 500,
+      attrs: { correlation_id: String(req.id), "http.request.method": req.method, "http.route": route, "http.response.status_code": status, "ts.signal": lc.signal, "ts.outcome": outcome, "ts.error_code": lc.errorCode, "ts.telco_id": lc.telcoId, "ts.reason_class": lc.reasonClass ?? classifyReason(outcome, reason), "ts.total_ms": total, "ts.telco_ms": Math.round(lc.telcoMs ?? 0), "ts.overhead_ms": Math.max(0, total - Math.round(lc.telcoMs ?? 0)) } });
     const p = (async () => {
       try {
         await d.pool.query(
@@ -87,6 +91,15 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
   const secEvent = (e: { cid: string; action: string; outcome: string; actor?: string; org?: string; reason?: string }) =>
     d.log.warn({ "event.category": "security", "event.action": e.action, "event.outcome": e.outcome, correlation_id: e.cid, actor: e.actor ?? "anonymous", reason: e.reason }, "security_event");
 
+  // AB-09 timing floor: error paths and answers that involve no telco call are held to a minimum response time so latency
+  // cannot be used to tell which step refused (or whether a number is routable). Shedding rate-limited traffic is NOT delayed.
+  const floorMs = d.cfg.minResponseMs ?? 0;
+  const floorDelay = async (req: FastifyRequest): Promise<void> => {
+    const t = trOf(req); if (!t || floorMs <= 0) return;
+    const wait = floorMs - (performance.now() - t.t0);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  };
+
   app.setErrorHandler(async (err, req, reply) => {
     const cid = (req.id as string) ?? randomUUID();
     let code: ErrorCode = "INTERNAL";
@@ -99,8 +112,11 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     { const t = trOf(req); if (t) { t.lc.errorCode = code; t.lc.reason = t.lc.reason ?? reason; if (!t.lc.outcome) t.lc.outcome = ERRORS[code].status >= 500 ? "ERROR" : "REJECTED"; } }
     const actor = (req as FastifyRequest & { actor?: string }).actor ?? "anonymous";
     secEvent({ cid, action: `request.${code.toLowerCase()}`, outcome: "failure", actor, reason });
-    if (code !== "INTERNAL") await d.audit.record({ correlationId: cid, actor, action: "request.rejected", outcome: code, detail: { reason } }).catch(() => undefined);
+    // Rate-limited and oversized requests are counted in the security log and request log, NOT written to the hash-chained audit
+    // (an attacker above the limit must not be able to turn every refused request into a serialised database write).
+    if (code !== "INTERNAL" && code !== "RATE_LIMITED" && code !== "PAYLOAD_TOO_LARGE") await d.audit.record({ correlationId: cid, actor, action: "request.rejected", outcome: code, detail: { reason } }).catch(() => undefined);
     const p = problem(code, cid);
+    if (code !== "RATE_LIMITED") await floorDelay(req);     // AB-09: refusals do not return measurably faster than a normal answer
     return reply.code(p.status).type("application/problem+json").send(p);
   });
   app.setNotFoundHandler(async (req, reply) => { const p = problem("NOT_FOUND", req.id as string); return reply.code(404).send(p); });
@@ -154,6 +170,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     const b = parseBody(req.body);
     if (!validateCreateConsent(b)) throw new ApiError("INVALID_REQUEST", "schema");
     const body = b as { phoneNumber: string; consentRef: string; purposeCode: string; signals: string[]; expiresAt: string };
+    await d.limiter.consentCreate(ctx.client.orgId);
     const exp = new Date(body.expiresAt);
     const maxDays = Number((await d.pool.query("SELECT value FROM platform_setting WHERE key='consent.max_days'")).rows[0]?.value ?? 0);   // configurable policy; fail closed if unset
     if (Number.isNaN(exp.getTime()) || exp.getTime() <= Date.now() || !maxDays || exp.getTime() > Date.now() + maxDays * 864e5) throw new ApiError("INVALID_REQUEST", "expiry out of range");
@@ -273,6 +290,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
       await meter(status, telcoId, telcoMs, rc);
       await d.audit.record({ correlationId: ctx.correlationId, actor: ctx.client.clientId, action: `signal.${def.signal.toLowerCase()}.check`, orgId: org, outcome: status, detail: { telco: telcoId ?? "none", telco_ms: Math.round(telcoMs), reason } });
       lap(req, "finalise");
+      if (telcoMs === 0) await floorDelay(req);        // no telco round trip happened: look like one that did
       return reply.send({ signal: def.signal, result: status, ...(fields ? { fields } : {}), correlationId: ctx.correlationId });
     });
   }

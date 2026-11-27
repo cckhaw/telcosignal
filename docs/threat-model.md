@@ -96,7 +96,7 @@ F1 participant→gateway→participant API; F2 token issuance (client creds); F3
 | AB-06 | Participant probes for another participant's usage/keys/statements | BOLA tests on every resource | sec/bola (M1+) |
 | AB-07 | Attacker uses stolen cert but no key/token | Needs token bound to same cert + private_key_jwt | sec/stolen-cert (M1) |
 | AB-08 | Admin attempts to mass-export logs to infer numbers | Masked-only, export role-restricted + audited + rate-limited | sec/export (M4b) |
-| AB-09 | Cache-timing inference of number's telco via latency | Normalised minimum response time floor on error paths | sec/timing (M5) |
+| AB-09 | Cache-timing inference of number's telco via latency | Normalised minimum response time floor on error paths | sec/timing (M5) — `m5-adversarial.test.ts` |
 | AB-10 | Malicious telco onboarding with endpoint pointing to internal metadata IP | Endpoint allow-list & SSRF guard, approval | sec/ssrf (M4a) |
 
 ## 4. Residual risk register (initial; owners proposed)
@@ -130,3 +130,15 @@ T-043 (XSS through log content), T-045 (logs and audit cannot be edited), T-048 
 | R-018 | No pager/e-mail delivery for alerts | Operations | Open |
 | R-019 | Request-log write is best effort (gaps possible if the write fails; the failure is logged) | Platform | Accepted, documented |
 | R-020 | No partitioning/archival or capacity testing of request log and rollups | Platform | Open (M5 load test) |
+
+## Status update after M5 (adversarial review of the sandbox; see `docs/reports/M5.md`)
+Every T- and AB- entry above is now mapped to the tests or CI controls that prove it in `docs/release/traceability.md` (generated; `tests/unit/traceability.test.ts` fails if an entry has no mapping or a mapped test disappears). The review covered every OWASP API Security Top 10 2023 category (`tests/security/m5-adversarial.test.ts`).
+New findings, each fixed with a regression test that was shown to fail without the fix:
+* **F-M5-1 (T-007, API4)** audit amplification: every refused request, including rate-limited ones, wrote a serialised hash-chained audit row, so rate limiting did not protect the database. Rate-limited and oversized requests are now counted in the security log and request log only.
+* **F-M5-2 (API4/API6)** consent registration was not quota-limited (consent farming, storage exhaustion). Added a per-organisation quota that fails closed when the limiter store is down.
+* **F-M5-3 (AB-09, T-006)** refusals and telco-less answers returned measurably faster than normal answers. Added a response-time floor (default 40 ms) for error paths and answers with no telco call; rate-limit shedding is deliberately not delayed.
+* **F-M5-4 (T-064)** OpenTelemetry was in the plan and the architecture but not implemented, and T-064 had no test. Implemented tracing with a fail-closed attribute allow-list and a second filter at the exporter; found by my own test that a UUID with eight consecutive digits would have been dropped as "phone-like" (now validated as a UUID).
+* **F-M5-5 (T-070)** services were started with `npx tsx` that fetched an unpinned `tsx` at run time; `tsx` is now a pinned dev dependency.
+* **F-M5-6 (sandbox)** the participant sandbox did not set `TS_ALLOW_LOOPBACK`, so the registry refused the mock telcos ("no adapter") and the DAST exercised only the UNAVAILABLE path for telco calls; setup now writes it into the participant environment (sandbox only).
+* **F-M5-7 (T-070, supply chain)** `npm sbom --omit dev` silently dropped a production dependency (`@opentelemetry/api`, which is also an optional peer of the test runner), so the production-only SBOM was incomplete. The SBOM is now generated with dev dependencies included (a superset) and `tests/unit/release.test.ts` compares it with `package.json`.
+New residual items R-021..R-025 are in `docs/release/residual-risks.md`, which is now the consolidated register.

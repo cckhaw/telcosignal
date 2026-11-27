@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "audit:deps": "npm audit --audit-level=high --omit=dev && npm audit --audit-level=high",
-    "sbom": "npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json",
+    "sbom": "npm sbom --sbom-format cyclonedx > docs/release/sbom.cdx.json",
     "sandbox:setup": "tsx scripts/sandbox-setup.ts .sandbox",
     "sandbox:mocks": "tsx mock/run-mocks.ts",
     "sandbox:start": "tsx src/main.ts",
@@ -23,6 +23,8 @@
     "dast:admin": "tsx tests/dast/admin.ts .sandbox",
     "gen:openapi": "tsx scripts/gen-openapi.ts",
     "gen:portal": "tsx scripts/build-portal.ts",
+    "gen:traceability": "tsx scripts/gen-traceability.ts",
+    "load": "tsx tests/load/run.ts .sandbox https://localhost:8443 200 60 load-report.json",
     "worker": "tsx src/worker/main.ts"
   },
   "devDependencies": {
@@ -31,6 +33,7 @@
     "@types/pg": "8.23.1",
     "eslint": "10.15.0",
     "globals": "17.14.0",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.74.0",
     "vitest": "5.1.2",
@@ -38,6 +41,9 @@
   },
   "dependencies": {
     "@fastify/rate-limit": "11.3.0",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/core": "2.12.0",
+    "@opentelemetry/sdk-trace-base": "2.12.0",
     "ajv": "8.20.0",
     "fastify": "5.12.8",
     "ioredis": "6.1.0",

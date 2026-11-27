@@ -26,8 +26,8 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | SC-06 | SBOM | CycloneDX via `npm sbom` | ci.yml `build-test` | CI artifact | partial |
 | SC-07 | Signed builds | attestation/cosign | – | – | not met (M1+) |
 | SC-08 | Actions pinned by commit SHA (version in comment) | ci.yml, deploy-production.yml | semgrep mutable-tag rule | met (pending CI) |
-| SC-09 | Minimal non-root, read-only containers | distroless nonroot Dockerfile; read-only in compose (M1) | docker/Dockerfile | Trivy | partial |
-| SC-10 | DAST on running sandbox | Own black-box runner (`tests/dast/run.ts`, 49 checks over real mTLS) against the running sandbox in CI; mutation-checked (disabling rate limiting makes it fail) | ci.yml `dast`, tests/dast | partial: not an off-the-shelf scanner; ZAP/Nuclei with client-certificate support still to add (open item) |
+| SC-09 | Minimal non-root, read-only containers | Debian-slim non-root Dockerfile (distroless base had unpatched OpenSSL, R-007); read-only in compose (M1) | docker/Dockerfile | Trivy | partial |
+| SC-10 | DAST on running sandbox | Own black-box runners (`tests/dast/run.ts` 53 checks over real mTLS; `tests/dast/admin.ts` 72 checks) against the running sandbox in CI; mutation-checked (disabling rate limiting makes it fail) | ci.yml `dast`, tests/dast | partial: not an off-the-shelf scanner; ZAP/Nuclei with client-certificate support still to add (open item) |
 | DEP-01 | No preview deployments; prod only | `git.deploymentEnabled=false`; workflow on `main` push only | vercel.json, deploy-production.yml | observed: 1 prod deployment, 0 previews (M0 report) | met |
 | DEP-02 | Delete older deployments after latest READY | `scripts/vercel-cleanup.mjs` (fails closed) | scripts | first run OK; delete path unexercised until 2nd merge | partial |
 | DEP-03 | Participant mTLS on hosting | Not possible on Vercel | docs/architecture.md §9 | – | needs human decision (D-003) |
@@ -80,3 +80,8 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | DEV-02 | Developer portal (static, public, no secrets) | `scripts/build-portal.ts` -> `portal/` on Vercel | m4b-openapi-portal (reproducible, no script, strict CSP) | met |
 | OPS-02 | Backup, restore and a TESTED restore | `ops/backup.ts` | m4b-backup-restore (7 tests) | partial: Neon PITR untested (D-002) |
 | OPS-03 | Runbooks (incident, alerts, kill switch, breach, backup/restore, DR, key rotation, retention, onboarding) | docs/runbooks/* | docs.test (tied to alert rules and settings) | partial: never exercised by a human team |
+| M5-01 | Adversarial review of the sandbox against every threat-model entry and every OWASP API Top 10 2023 category; fixes with regression tests | `docs/release/traceability.md`, `tests/security/m5-adversarial.test.ts` | `tests/unit/traceability.test.ts` (mapping exists), the suite (passes) | met for the sandbox as a SELF-review; independent test required (G1, G2) |
+| M5-02 | Telemetry carries no personal data (T-064) | `src/telemetry/otel.ts` allow-list + exporter filter | `tests/security/m5-telemetry.test.ts` | met (sandbox); no OTLP exporter bundled (R-021) |
+| M5-03 | Load: ~200 rps, p95 platform overhead < 100 ms, 2 s timeout, controls on | `tests/load/run.ts` | `docs/release/load/*.json`, `docs/release/load-results.md` | met on one shared VM with mock telcos (R-023); not capacity evidence |
+| M5-04 | Release gate package: traceability, test and scan report, SBOM, load results, runbooks, residual-risk register, not-approved statement | `docs/release/` | `tests/unit/release.test.ts` | delivered; human gates G1-G10 open |
+| AB09-01 | Refusals not measurably faster than answers (timing floor) | `participant-api/server.ts` `floorDelay` | m5-adversarial "AB-09 timing" | met (sandbox); fixed floor (R-022) |

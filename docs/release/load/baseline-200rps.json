@@ -1,0 +1,48 @@
+{
+ "generated_at": "2026-11-27T23:06:04.022Z",
+ "target": "https://localhost:8443",
+ "synthetic": true,
+ "offered_rps": 200,
+ "seconds": 60,
+ "sent": 12000,
+ "completed": 12000,
+ "achieved_rps": 199.8,
+ "max_inflight": 47,
+ "status": {
+  "200": 12000
+ },
+ "result": {
+  "TRUE": 6108,
+  "FALSE": 5892
+ },
+ "client_latency_ms": {
+  "p50": 66.6,
+  "p95": 78.2,
+  "p99": 118.1,
+  "max": 246
+ },
+ "success_rate": 100,
+ "server_request_log_rows": 12000,
+ "server_overhead_ms": {
+  "p50": 6,
+  "p95": 16,
+  "p99": 52.01000000000022,
+  "max": 167,
+  "note": "total minus time waiting for the telco; request-log rows are written after the response"
+ },
+ "server_total_p95_ms": 77,
+ "server_telco_p95_ms": 62,
+ "server_step_p95_ms": {
+  "adapter": 62.6,
+  "finalise": 4.1,
+  "consent": 3.1,
+  "auth": 2.4,
+  "limits": 1.8,
+  "route": 1.6,
+  "signature": 1.6,
+  "policy": 1,
+  "validate": 0
+ },
+ "audit_rows_total": 20214,
+ "usage_rows_total": 12912
+}

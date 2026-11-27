@@ -18,3 +18,7 @@ dast-admin-report.json
 admin.log
 idp.log
 worker.log
+dump.rdb
+load*.json
+load*.log
+!docs/release/sbom.cdx.json

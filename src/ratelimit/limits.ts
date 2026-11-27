@@ -6,8 +6,9 @@ export interface LimitConfig {
   perParticipantSignalPerMinute: number;   // default per organisation and signal (override table can change it)
   perTelcoPerSecond: number;               // platform-wide protection of each telco connection
   perSubjectPerHour: number;               // same participant asking about the same number (keyed hash) repeatedly
+  perParticipantConsentPerMinute: number;  // consent registrations per organisation (stops consent farming and storage exhaustion)
 }
-export const DEFAULT_LIMITS: LimitConfig = { perParticipantSignalPerMinute: 600, perTelcoPerSecond: 200, perSubjectPerHour: 20 };
+export const DEFAULT_LIMITS: LimitConfig = { perParticipantSignalPerMinute: 600, perTelcoPerSecond: 200, perSubjectPerHour: 20, perParticipantConsentPerMinute: 120 };
 
 async function hit(store: EphemeralStore, key: string, ttl: number, max: number): Promise<boolean> {
   try { return (await store.incr(key, ttl)) <= max; }
@@ -25,6 +26,9 @@ export class Limiter {
   }
   async telco(telcoId: string): Promise<boolean> {          // returns false (not throw): caller answers UNAVAILABLE for this request only
     return hit(this.store, `rl:t:${telcoId}:${bucket(1)}`, 5, this.cfg.perTelcoPerSecond);
+  }
+  async consentCreate(orgId: string): Promise<void> {
+    if (!(await hit(this.store, `rl:cc:${orgId}:${bucket(60)}`, 120, this.cfg.perParticipantConsentPerMinute))) throw new ApiError("RATE_LIMITED", "consent registration quota exceeded");
   }
   async subject(orgId: string, subjectHashHex: string): Promise<void> {
     if (!(await hit(this.store, `rl:s:${orgId}:${subjectHashHex}:${bucket(3600)}`, 7200, this.cfg.perSubjectPerHour))) throw new ApiError("RATE_LIMITED", "repeat lookups of one subject exceeded");

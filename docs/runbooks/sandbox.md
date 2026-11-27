@@ -6,3 +6,8 @@
 4. `npm run dast` and `npm run dast:admin` run the black-box checks against the live sandbox.
 Note: Postgres roles are cluster-wide. Running the test suite on the same cluster resets role passwords, which breaks an already-running sandbox: re-run step 2.
 Participant simulator credentials are in `.sandbox/participants.json` (synthetic; never reuse anywhere).
+
+Load test (own sandbox only): start the sandbox, raise the quotas for the run (defaults are meant to shed 200 rps from two participants), and run `npm run load`:
+`TS_RATE_LIMIT_RPS=250 npm run sandbox:setup`, then append `TS_LIMIT_PARTICIPANT_SIGNAL_PER_MIN=20000`, `TS_LIMIT_CONSENT_PER_MIN=5000`, `TS_LIMIT_TELCO_PER_SEC=400`, `MOCK_LATENCY_MS=60` to `.sandbox/env`, start the services, then
+`DB_URL=<TS_MIGRATOR_URL from .sandbox/db.env> LOAD_SUBJECTS=6000 [LOAD_FAULT_PCT=5] npm run load`. Results: `docs/release/load-results.md`.
+Telemetry: `TS_OTEL_EXPORTER=console` prints allow-listed spans as JSON to stdout (off by default). `TS_MIN_RESPONSE_MS` (default 40) sets the AB-09 response-time floor; `0` disables it.
