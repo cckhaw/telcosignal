@@ -1,0 +1,43 @@
+# Local SANDBOX stack (synthetic data only). NOT EXECUTED in the authoring environment (no Docker daemon): treat as unverified until run.
+# Prereq: `TS_ADMIN_URL=... npx tsx scripts/sandbox-setup.ts .sandbox` (generates all secrets/certs into ./.sandbox, gitignored),
+# with the admin URL pointing at the compose postgres published on 127.0.0.1:5432 (run `docker compose up -d postgres redis` first).
+name: telco-signal-sandbox
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: "no"
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+services:
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_PASSWORD_FILE: /run/sandbox/pgsuper }
+    volumes: ["./.sandbox/pgsuper:/run/sandbox/pgsuper:ro", "pgdata:/var/lib/postgresql/data"]
+    ports: ["127.0.0.1:5432:5432"]
+    networks: [data]
+    security_opt: ["no-new-privileges:true"]
+  redis:
+    image: redis:7
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--protected-mode", "yes"]
+    networks: [data]
+    <<: *hardened
+  mocks:
+    build: { context: .., dockerfile: docker/Dockerfile, target: mock }
+    env_file: ["./.sandbox/env.compose"]
+    environment: { MOCK_BIND: 0.0.0.0 }
+    volumes: ["./.sandbox:/run/sandbox:ro"]
+    networks: [telco]
+    <<: *hardened
+  platform:
+    build: { context: .., dockerfile: docker/Dockerfile, target: runtime }
+    env_file: ["./.sandbox/env.compose"]
+    volumes: ["./.sandbox/kms:/run/sandbox/kms", "./.sandbox/pki:/run/sandbox/pki:ro", "./.sandbox/audit-sink.jsonl:/run/sandbox/audit-sink.jsonl", "./.sandbox/env:/run/sandbox/env:ro"]
+    ports: ["127.0.0.1:8443:8443"]
+    depends_on: [postgres, redis, mocks]
+    networks: [edge, data, telco]
+    <<: *hardened
+networks:            # segmentation: edge (participants) / data (db, redis) / telco (outbound to telcos) are separate; admin network arrives in M4a
+  edge: {}
+  data: { internal: true }
+  telco: { internal: true }
+volumes: { pgdata: {} }

@@ -13,7 +13,11 @@
     "lint": "eslint .",
     "test": "vitest run",
     "audit:deps": "npm audit --audit-level=high --omit=dev && npm audit --audit-level=high",
-    "sbom": "npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json"
+    "sbom": "npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json",
+    "sandbox:setup": "tsx scripts/sandbox-setup.ts .sandbox",
+    "sandbox:mocks": "tsx mock/run-mocks.ts",
+    "sandbox:start": "tsx src/main.ts",
+    "dast": "tsx tests/dast/run.ts .sandbox https://localhost:8443"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

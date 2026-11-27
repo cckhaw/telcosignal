@@ -10,4 +10,5 @@ export const LOG_REDACT_PATHS = [
   "req.headers.authorization", "req.headers.cookie", "headers.authorization",
   "*.phoneNumber", "*.msisdn", "*.client_assertion", "*.access_token", "*.password", "*.secret",
   "phoneNumber", "msisdn", "client_assertion", "access_token",
+  "idDocument", "name", "givenName", "familyName", "address", "birthdate", "email", "postalCode", "country", "kyc", "*.kyc",
 ];

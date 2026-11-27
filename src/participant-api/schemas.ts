@@ -17,3 +17,17 @@ export const validateCreateConsent = ajv.compile({
   },
 });
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export const validateDeviceSwapCheck = validateSimSwapCheck;
+export const validateCallForwardingCheck = ajv.compile({
+  type: "object", additionalProperties: false, required: ["phoneNumber", "purposeCode", "consentRef"],
+  properties: { phoneNumber: PHONE, purposeCode: { enum: [...PURPOSES] }, consentRef: CONSENT_REF },
+});
+const KYC_STR = { type: "string", minLength: 1, maxLength: 256 } as const;
+const KYC_FIELDS = ["idDocument", "name", "givenName", "familyName", "address", "birthdate", "email", "postalCode", "country"] as const;
+export const validateKycMatch = ajv.compile({
+  type: "object", additionalProperties: false, required: ["phoneNumber", "purposeCode", "consentRef"],
+  properties: { phoneNumber: PHONE, purposeCode: { enum: [...PURPOSES] }, consentRef: CONSENT_REF, ...Object.fromEntries(KYC_FIELDS.map((f) => [f, KYC_STR])) },
+  anyOf: KYC_FIELDS.map((f) => ({ required: [f], properties: { [f]: KYC_STR } })),     // at least one attribute to match
+});
+export { KYC_FIELDS };

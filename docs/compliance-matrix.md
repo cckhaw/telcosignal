@@ -27,7 +27,7 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | SC-07 | Signed builds | attestation/cosign | – | – | not met (M1+) |
 | SC-08 | Actions pinned by commit SHA (version in comment) | ci.yml, deploy-production.yml | semgrep mutable-tag rule | met (pending CI) |
 | SC-09 | Minimal non-root, read-only containers | distroless nonroot Dockerfile; read-only in compose (M1) | docker/Dockerfile | Trivy | partial |
-| SC-10 | DAST on running sandbox | ZAP against compose sandbox | ci.yml `dast` | – | not met (sandbox arrives M1) |
+| SC-10 | DAST on running sandbox | Own black-box runner (`tests/dast/run.ts`, 49 checks over real mTLS) against the running sandbox in CI; mutation-checked (disabling rate limiting makes it fail) | ci.yml `dast`, tests/dast | partial: not an off-the-shelf scanner; ZAP/Nuclei with client-certificate support still to add (open item) |
 | DEP-01 | No preview deployments; prod only | `git.deploymentEnabled=false`; workflow on `main` push only | vercel.json, deploy-production.yml | observed: 1 prod deployment, 0 previews (M0 report) | met |
 | DEP-02 | Delete older deployments after latest READY | `scripts/vercel-cleanup.mjs` (fails closed) | scripts | first run OK; delete path unexercised until 2nd merge | partial |
 | DEP-03 | Participant mTLS on hosting | Not possible on Vercel | docs/architecture.md §9 | – | needs human decision (D-003) |
@@ -39,7 +39,7 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | API-01 | Strict schema, unknown fields rejected, size/time limits | `participant-api/schemas.ts`, bodyLimit 4 KB, timeouts | m1-controls "input validation" | met (sandbox) |
 | API-02 | Signed requests, timestamp, nonce, replay rejection | `verifyRequestSignature`, Redis NX | m1-acceptance "replay and request integrity", "fail closed when replay store is down" | met (sandbox) |
 | API-03 | Errors reveal no internals / no number existence | `common/errors.ts`; uniform UNAVAILABLE | m1-controls "errors reveal no internals", "signal safety" | met (sandbox) |
-| API-04 | Outbound allow-list; telco responses untrusted | `adapters/telcoA.ts` origin allow-list, size cap, strict Ajv, TLS verify | m1-controls signal-safety digits 3-7 | partial (Telco A only; B/C in M2) |
+| API-04 | Outbound allow-list; telco responses untrusted | `adapters/outbound.ts` (https only, origin allow-list, no redirects, size/time caps, TLS verify + mTLS), per-adapter strict parsers (A: Ajv; B: anchored regex; C: Ajv + request/carrier binding) | m2-signals "malicious or broken telco/aggregator responses", "outbound controls" | met (sandbox mocks); private-IP/DNS pinning for admin-supplied endpoints arrives with M4a |
 | API-05 | Rate limits (baseline per client certificate, stricter on token endpoint, fail closed); enumeration detection | `@fastify/rate-limit` + Redis in `participant-api/server.ts` | m1-ratelimit | partial (per-signal/number-hash limits, quotas, enumeration detection = M3) |
 | DATA-01 | TLS 1.3 preferred / 1.2 min; mTLS | `participant-api/server.ts` | m1-controls "transport" | met (sandbox); edge/gateway not built (R-002/R-005) |
 | DATA-02 | Encryption at rest, field-level, KMS iface, rotation | `kms/`, Neon-at-rest (not yet) | m1-controls "KMS" | partial |
@@ -48,6 +48,10 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | DB-03 | Parameterised queries; reviewed, checksummed migrations | all queries parameterised; `db/migrate.ts` | m1-controls migration checksum; Semgrep rule | met |
 | PRIV-01 | Purpose + consent ref required; reject missing/expired/revoked/not permitted | `consent/consent.ts` | m1-acceptance "missing / invalid consent" | met (sandbox) |
 | AUD-01 | Tamper-evident, append-only audit, copy outside DB | `audit/audit.ts`, `audit_append()` | m1-controls "audit log" (incl. superuser tamper, external copy deletion) | met (sandbox); external sink is a local file mock |
-| SAFE-01 | Timeout/error/unsupported never "no swap" | adapters + normaliser | m1-controls "signal safety" | met for SIM swap (other signals M2) |
+| SAFE-01 | Timeout/error/unsupported never "no swap"/"no forwarding"/"match" | adapters + generic signal pipeline | m1-controls "signal safety"; m2-signals (all 4 signals, 3 telcos, ~25 hostile cases) | met (sandbox) |
 | RES-01 | Kill switch per participant/telco/signal | `kill_switch` table, checked per request | m1-controls kill switches | partial (admin UI in M4a) |
 | METER-01 | No charge on platform/telco failure | DB CHECK + app logic | m1-controls "never billed" | met |
+| ROUTE-01 | Phone-number-to-telco routing with number porting | `router/router.ts`, `porting` (keyed hash, effective-dated) | m2-signals "routing, number porting and coverage" | met (sandbox); porting writes need two-person approval (M4a, T-036) |
+| REG-01 | Signal registry and per-telco coverage; NOT_SUPPORTED | `signals`, `telco_signal_coverage` | m2-signals | met (sandbox) |
+| PRIV-02 | KYC match inputs never stored | in-memory only; redaction; audit/usage carry no attributes | m2-signals "KYC inputs are never stored or logged" | met (sandbox) |
+| CAMARA-01 | CAMARA definitions pinned from official repos; adapter paths follow them | `openapi/camara/PINS.md`, `SHA256SUMS` | m2-signals "adapter paths match the vendored, pinned CAMARA definitions" | met for Telco A; the participant API deviates deliberately (architecture §11) |

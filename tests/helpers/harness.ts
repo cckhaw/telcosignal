@@ -18,8 +18,13 @@ import { makeLogger } from "../../src/common/log.js";
 import type { Config } from "../../src/common/config.js";
 import { buildParticipantServer } from "../../src/participant-api/server.js";
 import { TelcoAAdapter } from "../../src/adapters/telcoA.js";
+import type { TelcoAdapter as TelcoAdapterT } from "../../src/adapters/types.js";
 import { certThumbprint } from "../../src/identity/tokens.js";
 import { startMockTelcoA, type MockTelco } from "../../mock/telco-a.js";
+import { startMockTelcoB } from "../../mock/telco-b.js";
+import { startMockAggregator } from "../../mock/aggregator.js";
+import { TelcoBAdapter } from "../../src/adapters/telcoB.js";
+import { TelcoCAdapter } from "../../src/adapters/telcoC.js";
 import { TestPki, type Pem } from "./pki.js";
 
 const ADMIN_URL = process.env["TS_TEST_ADMIN_URL"] ?? "";
@@ -33,7 +38,7 @@ export interface TestClient { name: string; orgId: string; pem: Pem; key: Crypto
 export interface ReqOpts { body?: unknown; rawBody?: string; token?: string | null; sign?: boolean; signAs?: TestClient; iat?: number; jti?: string; headers?: Record<string, string>; agentOf?: TestClient; contentType?: string; tamperAfterSign?: string }
 export interface Harness {
   cfg: Config; app: FastifyInstance; port: number; pool: Pool; migrator: Pool; reporting: Pool; store: EphemeralStore; kms: LocalKms; audit: Audit;
-  pki: TestPki; telco: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string };
+  pki: TestPki; telco: MockTelco; telcoB: MockTelco; aggregator: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string };
   orgA: string; orgB: string; orgC: string; bankA: TestClient; bankB: TestClient; bankC: TestClient; adminUrl: string; dbName: string;
   newClient(name: string, orgId: string, scopes: string[], o?: { pem?: Pem; registerCert?: string }): Promise<TestClient>;
   assertion(c: TestClient, o?: { aud?: string; exp?: number; iat?: number; jti?: string; alg?: string; iss?: string }): Promise<string>;
@@ -42,7 +47,9 @@ export interface Harness {
   consent(c: TestClient, number: string, o?: { ref?: string; purpose?: string; signals?: string[]; expiresInMs?: number }): Promise<{ ref: string; id: string }>;
   stop(): Promise<void>;
 }
-export const num = (last: string, mid = "0001") => `+6099900${mid}${last}`;   // synthetic, reserved-looking range
+export const num = (last: string, mid = "0001") => `+6099900${mid}${last}`;    // synthetic: Telco A range
+export const numB = (last: string, mid = "0001") => `+6099901${mid}${last}`;   // Telco B range
+export const numC = (last: string, mid = "0001") => `+6099902${mid}${last}`;   // Telco C range (via aggregator)
 const b64 = (n: number) => randomBytes(n).toString("base64url");
 
 export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis } = {}): Promise<Harness> {
@@ -60,6 +67,8 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const platformOut = pki.issue("platform-out");
   const telcoSrv = pki.issue("telco-a-server", { server: true });
   const telco = await startMockTelcoA({ cert: telcoSrv.cert, key: telcoSrv.key, clientCa: pki.caCert });
+  const telcoB = await startMockTelcoB({ cert: telcoSrv.cert, key: telcoSrv.key, clientCa: pki.caCert });
+  const aggregator = await startMockAggregator({ cert: telcoSrv.cert, key: telcoSrv.key, clientCa: pki.caCert });
 
   const kmsDir = join(work, "kms"), auditSink = join(work, "audit.jsonl");
   writeFileSync(auditSink, "", { mode: 0o600 });
@@ -74,12 +83,18 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const telcoOrigin = `https://localhost:${telco.port}`;
   const cfg: Config = {
     databaseUrl: urls.app, redisUrl: REDIS_URL, participantPort: 0,
-    tls: { cert: server.cert, key: server.key, participantCa: pki.caCert },
+    tls: { cert: server.cert, key: server.key, participantCa: pki.caCert }, telcoMtls: { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key },
     issuer: "https://platform.test", audience: "telco-signal-api", tokenEndpoint: "https://localhost:0/oauth/token",
-    kmsDir, auditSinkPath: auditSink, telcoAllowList: [telcoOrigin], telcoTimeoutMs: opts.telcoTimeoutMs ?? 700, requestSkewSeconds: 60,
+    kmsDir, auditSinkPath: auditSink, telcoAllowList: [telcoOrigin, `https://localhost:${telcoB.port}`, `https://localhost:${aggregator.port}`], telcoTimeoutMs: opts.telcoTimeoutMs ?? 700, requestSkewSeconds: 60,
     rateLimitPerSecond: opts.rps ?? 5000, tokenRateLimitPerSecond: opts.tokenRps ?? 5000,   // high by default so functional tests are not throttled
   };
-  const adapters = new Map([["telco-a", new TelcoAAdapter("telco-a", telcoOrigin, cfg.telcoAllowList, { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key }, cfg.telcoTimeoutMs)]]);
+  const mtls = { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key };
+  const bOrigin = `https://localhost:${telcoB.port}`, cOrigin = `https://localhost:${aggregator.port}`;
+  const adapters = new Map<string, TelcoAdapterT>([
+    ["telco-a", new TelcoAAdapter("telco-a", telcoOrigin, cfg.telcoAllowList, mtls, cfg.telcoTimeoutMs)],
+    ["telco-b", new TelcoBAdapter("telco-b", bOrigin, cfg.telcoAllowList, mtls, cfg.telcoTimeoutMs)],
+    ["telco-c", new TelcoCAdapter("telco-c", "telco-c", cOrigin, cfg.telcoAllowList, mtls, cfg.telcoTimeoutMs)],
+  ]);
   const rlRedis = opts.rateLimitRedis ?? (store instanceof RedisStore ? store.redis : undefined);
   const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters, log, ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
   await app.listen({ port: 0, host: "127.0.0.1" });
@@ -89,8 +104,12 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   // ---- seed (as migrator; synthetic only) ----
   const org = async (name: string) => (await migrator.query("INSERT INTO organisations(name, kind, state) VALUES ($1,'bank','active') RETURNING id", [name])).rows[0].id as string;
   const [orgA, orgB, orgC] = [await org("Synthetic Bank A"), await org("Synthetic Bank B"), await org("Synthetic Bank C")];
-  await migrator.query("INSERT INTO telcos(id, adapter, base_url) VALUES ('telco-a','camara',$1)", [telcoOrigin]);
-  await migrator.query("INSERT INTO route_prefix(prefix, telco_id) VALUES ('+6099900','telco-a')");
+  await migrator.query("INSERT INTO telcos(id, adapter, base_url) VALUES ('telco-a','camara',$1), ('telco-b','proprietary',$2), ('telco-c','aggregator',$3)", [telcoOrigin, bOrigin, cOrigin]);
+  await migrator.query("INSERT INTO route_prefix(prefix, telco_id) VALUES ('+6099900','telco-a'), ('+6099901','telco-b'), ('+6099902','telco-c')");
+  await migrator.query(`INSERT INTO telco_signal_coverage(telco_id, signal) VALUES
+    ('telco-a','SIM_SWAP'),('telco-a','DEVICE_SWAP'),('telco-a','CALL_FORWARDING'),('telco-a','KYC_MATCH'),
+    ('telco-b','SIM_SWAP'),('telco-b','CALL_FORWARDING'),
+    ('telco-c','SIM_SWAP'),('telco-c','DEVICE_SWAP'),('telco-c','KYC_MATCH')`);
 
   const h = {} as Harness;
   const agents: Agent[] = [];
@@ -106,7 +125,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     agents.push(agent);
     return { name, orgId, pem, key: privateKey, kid, thumb, agent };
   };
-  const ALL = ["sim-swap:check", "consent:write", "consent:read"];
+  const ALL = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "consent:write", "consent:read"];
   const bankA = await h.newClient("bank-a", orgA, ALL), bankB = await h.newClient("bank-b", orgB, ALL), bankC = await h.newClient("bank-c", orgC, ["consent:read"]);
 
   h.assertion = (c, o = {}) => {
@@ -143,13 +162,13 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   };
   h.consent = async (c, number, o = {}) => {
     const ref = o.ref ?? `CONSENT-${b64(8)}`;
-    const r = await h.call(c, "POST", "/v1/consents", { body: { phoneNumber: number, consentRef: ref, purposeCode: o.purpose ?? "FRAUD_PREVENTION", signals: o.signals ?? ["SIM_SWAP"], expiresAt: new Date(Date.now() + (o.expiresInMs ?? 3_600_000)).toISOString() } });
+    const r = await h.call(c, "POST", "/v1/consents", { body: { phoneNumber: number, consentRef: ref, purposeCode: o.purpose ?? "FRAUD_PREVENTION", signals: o.signals ?? ["SIM_SWAP", "DEVICE_SWAP", "CALL_FORWARDING", "KYC_MATCH"], expiresAt: new Date(Date.now() + (o.expiresInMs ?? 3_600_000)).toISOString() } });
     if (r.status !== 201) throw new Error(`consent create failed ${r.status}`);
     return { ref, id: r.json.id as string };
   };
-  Object.assign(h, { cfg, app, port, pool, migrator, reporting, store, kms, audit, pki, telco, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
+  Object.assign(h, { cfg, app, port, pool, migrator, reporting, store, kms, audit, pki, telco, telcoB, aggregator, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
   h.stop = async () => {
-    await app.close(); await telco.close(); for (const a of agents) await a.close();
+    await app.close(); await telco.close(); await telcoB.close(); await aggregator.close(); for (const a of agents) await a.close();
     for (const ad of adapters.values()) await ad.close();
     await pool.end(); await migrator.end(); await reporting.end(); await store.close();
     const adm = new pg.Client({ connectionString: ADMIN_URL }); await adm.connect(); await adm.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`); await adm.end();

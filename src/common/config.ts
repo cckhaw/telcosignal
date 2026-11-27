@@ -4,6 +4,7 @@ export interface Config {
   redisUrl: string;
   participantPort: number;
   tls: { cert: string; key: string; participantCa: string };
+  telcoMtls: { ca: string; cert: string; key: string };
   issuer: string;
   audience: string;
   tokenEndpoint: string;
@@ -15,8 +16,17 @@ export interface Config {
   rateLimitPerSecond: number;      // per client certificate, all routes
   tokenRateLimitPerSecond: number; // per client certificate, token endpoint
 }
+import { readFileSync } from "node:fs";
+/** NAME or NAME_FILE (a path; used for mounted secrets so values never sit in environment dumps or image layers). */
 function need(name: string): string {
-  const v = process.env[name];
+  const f = process.env[`${name}_FILE`];
+  const v = f ? readFileSync(f, "utf8").trim() : process.env[name];
+  if (!v) throw new Error(`missing required configuration ${name}`);
+  return v;
+}
+function needRaw(name: string): string {
+  const f = process.env[`${name}_FILE`];
+  const v = f ? readFileSync(f, "utf8") : process.env[name];
   if (!v) throw new Error(`missing required configuration ${name}`);
   return v;
 }
@@ -26,7 +36,8 @@ export function loadConfig(env = process.env): Config {
     databaseUrl: need("TS_DATABASE_URL"),
     redisUrl: need("TS_REDIS_URL"),
     participantPort: Number(process.env["TS_PARTICIPANT_PORT"] ?? 8443),
-    tls: { cert: need("TS_TLS_CERT"), key: need("TS_TLS_KEY"), participantCa: need("TS_PARTICIPANT_CA") },
+    tls: { cert: needRaw("TS_TLS_CERT"), key: needRaw("TS_TLS_KEY"), participantCa: needRaw("TS_PARTICIPANT_CA") },
+    telcoMtls: { ca: needRaw("TS_TELCO_CA"), cert: needRaw("TS_TELCO_CLIENT_CERT"), key: needRaw("TS_TELCO_CLIENT_KEY") },
     issuer: need("TS_ISSUER"),
     audience: process.env["TS_AUDIENCE"] ?? "telco-signal-api",
     tokenEndpoint: need("TS_TOKEN_ENDPOINT"),
