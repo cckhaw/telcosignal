@@ -2,6 +2,7 @@
 // earlier milestones left open (AB-09). Each block states the attack, then asserts the control. Synthetic data only.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { connect } from "node:tls";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { startHarness, num, type Harness } from "../helpers/harness.js";
 import { verifyAuditChain } from "../../src/audit/audit.js";
@@ -78,7 +79,7 @@ describe("API3:2023 broken object property level authorization", () => {
   });
   it("read-only and server-controlled properties cannot be written through consent creation (revoked, id, orgId, createdAt)", async () => {
     for (const extra of [{ revoked: true }, { id: "00000000-0000-4000-8000-000000000001" }, { orgId: h.orgB }, { org_id: h.orgB }, { createdAt: "2020-01-01T00:00:00Z" }, { subjectHash: "aa" }]) {
-      const r = await h.call(h.bankA, "POST", "/v1/consents", { body: { phoneNumber: num("0", "0511"), consentRef: `X-${Math.random()}`, purposeCode: "FRAUD_PREVENTION", signals: ["SIM_SWAP"], expiresAt: new Date(Date.now() + 3.6e6).toISOString(), ...extra } });
+      const r = await h.call(h.bankA, "POST", "/v1/consents", { body: { phoneNumber: num("0", "0511"), consentRef: `X-${randomUUID()}`, purposeCode: "FRAUD_PREVENTION", signals: ["SIM_SWAP"], expiresAt: new Date(Date.now() + 3.6e6).toISOString(), ...extra } });
       expect(r.status, JSON.stringify(extra)).toBe(400);
     }
   });

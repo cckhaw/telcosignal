@@ -4,7 +4,7 @@
 // send time, so a slow platform cannot hide its queueing (no coordinated omission).
 // Usage: npx tsx tests/load/run.ts <sandboxDir> <baseUrl> <rps> <seconds> <outFile>  (env: LOAD_SUBJECTS, DB_URL for server-side timings)
 import { readFileSync, writeFileSync } from "node:fs";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { CompactSign, SignJWT, importJWK, type JWK } from "jose";
 import { Agent, request } from "undici";
 import pg from "pg";
@@ -65,7 +65,7 @@ if (FAULT_PCT > 0) for (let i = 0; i < Math.ceil((RPS * SECONDS * FAULT_PCT) / 1
   faulty.push({ n, ref, prefix: "+6099900" }); owner.set(ref, p);
 }
 // Shuffle so the traffic is not a sequential range scan (which the abuse detector is meant to catch).
-for (let i = subjects.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [subjects[i], subjects[j]] = [subjects[j]!, subjects[i]!]; }
+for (let i = subjects.length - 1; i > 0; i--) { const j = randomInt(i + 1); [subjects[i], subjects[j]] = [subjects[j]!, subjects[i]!]; }
 
 // ---- open-loop run ----
 interface Rec { lat: number; status: number; result: string; signal: string }
@@ -77,8 +77,8 @@ const jobs: Promise<void>[] = [];
 for (let i = 0; i < total; i++) {
   await sleepUntil(start + (i * 1000) / RPS);
   const sched = start + (i * 1000) / RPS;
-  const useFault = faulty.length > 0 && Math.random() * 100 < FAULT_PCT;
-  const s = useFault ? faulty[Math.floor(Math.random() * faulty.length)]! : subjects[i % subjects.length]!, sig = useFault ? "sim-swap" : SUPPORTED[s.prefix]![i % SUPPORTED[s.prefix]!.length]!;
+  const useFault = faulty.length > 0 && randomInt(10_000) / 100 < FAULT_PCT;
+  const s = useFault ? faulty[randomInt(faulty.length)]! : subjects[i % subjects.length]!, sig = useFault ? "sim-swap" : SUPPORTED[s.prefix]![i % SUPPORTED[s.prefix]!.length]!;
   const p = owner.get(s.ref)!;
   const body: Record<string, unknown> = { phoneNumber: s.n, consentRef: s.ref, purposeCode: "FRAUD_PREVENTION", ...(sig === "kyc-match" ? KYC : {}), ...(sig === "sim-swap" || sig === "device-swap" ? { maxAge: 240 } : {}) };
   inflight++; maxInflight = Math.max(maxInflight, inflight);
