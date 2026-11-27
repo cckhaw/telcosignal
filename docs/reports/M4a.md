@@ -18,6 +18,9 @@ DAST on a freshly generated live sandbox: participant API **53/53**, admin porta
 - The participant role lacked `SELECT` on entitlements/allow-list (caught by the full suite).
 - A routing *prefix* in an audit record tripped the audit privacy guard (E.164 pattern) and failed the request closed; audit entries for prefix/porting targets now carry only the target type.
 
+## CI finding on PR #11 and its fix
+CodeQL (high): the admin routes had no rate limiting. Added `@fastify/rate-limit` to the admin interface: per session (per source address before sign-in), 600/min by default, 60/min on the sign-in endpoints; test proves per-session isolation and sign-in throttling. Counters are in-process (R-015: not shared across several admin instances).
+
 ## Honest limits (new residual risks R-010..R-014, see threat model)
 - R-010 Telco conformance results are asserted by the platform process (the database cannot call a telco); a compromised portal could record one. Activation still needs a second person who sees the results.
 - R-011 The portal shares the number-hashing key with the participant plane (needed to hash numbers for porting). Token-signing keys are NOT shared (separate key directory).

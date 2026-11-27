@@ -26,7 +26,7 @@ export interface Session {
 }
 export interface R { status: number; text: string; headers: Record<string, string | string[] | undefined>; location?: string }
 
-export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleMinutes?: number; reuseUsers?: boolean } = {}): Promise<Admin> {
+export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleMinutes?: number; reuseUsers?: boolean; perMinute?: number; loginPerMinute?: number } = {}): Promise<Admin> {
   const logs: string[] = [];
   const log = makeLogger("debug", new Writable({ write(c, _e, cb) { logs.push(String(c)); cb(); } }));
   const srvCert = h.pki.issue("admin-server", { server: true }), idpCert = h.pki.issue("idp-server", { server: true });
@@ -35,7 +35,7 @@ export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleM
   const pool = makePool(h.urls.admin);
   const audit = new Audit(pool, h.auditSink);
   const cfg: AdminConfig = {
-    tls: { cert: srvCert.cert, key: srvCert.key }, origin: "", allowedCidrs: o.allowedCidrs ?? ["127.0.0.1", "::1"], idleMinutes: o.idleMinutes ?? 15, absoluteHours: 8, syntheticPrefixes: ["+60999"],
+    tls: { cert: srvCert.cert, key: srvCert.key }, origin: "", allowedCidrs: o.allowedCidrs ?? ["127.0.0.1", "::1"], idleMinutes: o.idleMinutes ?? 15, absoluteHours: 8, rateLimit: { perMinute: o.perMinute ?? 100_000, loginPerMinute: o.loginPerMinute ?? 100_000 }, syntheticPrefixes: ["+60999"],
     oidc: { issuer: idp.issuer, clientId: "admin-portal", clientSecret, authEndpoint: `${idp.origin}/authorize`, tokenEndpoint: `${idp.origin}/token`, jwksUri: `${idp.origin}/jwks`, ca: h.pki.caCert, redirectUri: "", allowMockParams: true },
   };
   // the portal's conformance runner uses the portal's OWN restricted role, exactly as in production

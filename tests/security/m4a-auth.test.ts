@@ -123,6 +123,21 @@ describe("web application hardening", () => {
   });
 });
 
+describe("rate limiting on the admin interface", () => {
+  it("limits per session and per source address; sign-in endpoints are stricter; other sessions are unaffected", async () => {
+    const lim = await startAdmin(h, { reuseUsers: true, perMinute: 12, loginPerMinute: 6 });
+    try {
+      const s1 = await lim.login("alice"), s2 = await lim.login("bob");
+      const codes: number[] = []; for (let i = 0; i < 20; i++) codes.push((await s1.get("/orgs")).status);
+      expect(codes.filter((c) => c === 429).length).toBeGreaterThan(0); expect(codes[0]).toBe(200);
+      const limited = await s1.get("/orgs"); expect(limited.status).toBe(429); expect(limited.text).not.toMatch(/stack|postgres|rate-limit/i);
+      expect((await s2.get("/orgs")).status).toBe(200);                                  // a different session has its own budget
+      const logins: number[] = []; for (let i = 0; i < 10; i++) { const r = await request(`${lim.origin}/login`, { dispatcher: lim.agent, maxRedirections: 0 } as never); await r.body.dump(); logins.push(r.statusCode); }
+      expect(logins.filter((c) => c === 429).length).toBeGreaterThan(0);                // sign-in brute force / flooding is throttled harder
+    } finally { await lim.stop(); }
+  });
+});
+
 describe("the participant and admin planes are separate", () => {
   it("the admin listener has no participant routes, the participant listener has no admin routes", async () => {
     const s = await a.login("alice");

@@ -25,6 +25,7 @@ const origin = env("TS_ADMIN_ORIGIN");
 const cfg: AdminConfig = {
   tls: { cert: file("TS_ADMIN_TLS_CERT"), key: file("TS_ADMIN_TLS_KEY") }, origin,
   allowedCidrs: (process.env["TS_ADMIN_ALLOWED_CIDRS"] ?? "127.0.0.1,::1").split(",").map((s) => s.trim()).filter(Boolean),
+  rateLimit: { perMinute: Number(process.env["TS_ADMIN_RATE_PER_MIN"] ?? 600), loginPerMinute: Number(process.env["TS_ADMIN_LOGIN_PER_MIN"] ?? 60) },
   idleMinutes: Number(process.env["TS_ADMIN_IDLE_MINUTES"] ?? 15), absoluteHours: Number(process.env["TS_ADMIN_ABSOLUTE_HOURS"] ?? 8),
   syntheticPrefixes: (process.env["TS_SYNTHETIC_PREFIXES"] ?? "+60999").split(",").map((s) => s.trim()),
   oidc: { issuer: env("TS_OIDC_ISSUER"), clientId: env("TS_OIDC_CLIENT_ID"), clientSecret: file("TS_OIDC_CLIENT_SECRET").trim(), authEndpoint: env("TS_OIDC_AUTH_ENDPOINT"), tokenEndpoint: env("TS_OIDC_TOKEN_ENDPOINT"), jwksUri: env("TS_OIDC_JWKS_URI"), ca: file("TS_OIDC_CA"), redirectUri: `${origin}/oidc/callback`, allowMockParams: process.env["TS_ADMIN_ALLOW_MOCK_PARAMS"] === "true" },

@@ -121,3 +121,4 @@ New residual risks: R-010 telco conformance results are asserted by the platform
 | R-012 | No DNS pinning between endpoint validation and connection (rebinding) | Platform | Open |
 | R-013 | No per-telco certificate pinning/onboarding workflow | Integration | Open |
 | R-014 | Single-person safety actions (engage kill switch, revoke credential, suspend org) | Operations | Accepted by design, alerts in M4b |
+| R-015 | Admin rate-limit counters are in-process (not shared across admin instances) | Platform | Open |

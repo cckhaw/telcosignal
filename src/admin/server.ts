@@ -1,3 +1,4 @@
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { SignJWT, createLocalJWKSet, jwtVerify, jwtVerify as verifyJwt, type JWK } from "jose";
@@ -19,6 +20,7 @@ export interface AdminConfig {
   origin: string;                                  // set after listen (https://host:port)
   allowedCidrs: string[];                          // source-address allow-list for the isolated admin interface
   idleMinutes: number; absoluteHours: number;
+  rateLimit: { perMinute: number; loginPerMinute: number };   // per session (per source address before sign-in); in-process counters
   syntheticPrefixes: string[];                     // the only numbers the console/tests/porting forms accept
   oidc: { issuer: string; clientId: string; clientSecret: string; authEndpoint: string; tokenEndpoint: string; jwksUri: string; ca: string; redirectUri: string; allowMockParams: boolean };
 }
@@ -66,6 +68,12 @@ export async function buildAdminServer(d: AdminDeps): Promise<{ app: FastifyInst
       .header("permissions-policy", "camera=(), microphone=(), geolocation=()");
     return payload;
   });
+  // Rate limiting: per session once signed in (per source address otherwise); stricter on the sign-in endpoints.
+  await app.register(rateLimit, {
+    global: true, max: d.cfg.rateLimit.perMinute, timeWindow: 60_000, nameSpace: "admin-rl:",
+    keyGenerator: (req) => { const c = parseCookies(req.headers.cookie)[SESSION_COOKIE]; return c && /^[A-Za-z0-9_-]{43}$/.test(c) ? `s:${sha(c).toString("hex").slice(0, 24)}` : `ip:${req.ip}`; },
+    errorResponseBuilder: () => Object.assign(new Error("rate limited"), { statusCode: 429 }),
+  });
   app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 32 * 1024 }, (_r, body, done) => done(null, body));
   app.setNotFoundHandler(async (req, reply) => reply.code(404).type("text/html").send(page({ title: "Not found", nonce: (req as FastifyRequest & { nonce?: string }).nonce ?? "", body: h`<p>Not found.</p>` })));
   app.setErrorHandler(async (err, req, reply) => {
@@ -99,7 +107,8 @@ export async function buildAdminServer(d: AdminDeps): Promise<{ app: FastifyInst
   }
 
   // ---------- OIDC login (authorization code + PKCE, strict ID-token validation, phishing-resistant MFA required) ----------
-  app.get("/login", async (req, reply) => {
+  const loginLimit = { config: { rateLimit: { max: d.cfg.rateLimit.loginPerMinute, timeWindow: 60_000 } } };
+  app.get("/login", loginLimit, async (req, reply) => {
     const q = req.query as Record<string, string | undefined>;
     const state = randomBytes(24).toString("base64url"), nonce = randomBytes(24).toString("base64url"), verifier = randomBytes(48).toString("base64url");
     const stepUp = q["stepup"] === "1";
@@ -111,7 +120,7 @@ export async function buildAdminServer(d: AdminDeps): Promise<{ app: FastifyInst
     if (d.cfg.oidc.allowMockParams) for (const [k, v] of Object.entries(q)) if (k.startsWith("mock_") || k === "login_hint") u.searchParams.set(k, String(v));   // sandbox only
     return reply.header("set-cookie", cookie(LOGIN_COOKIE, jws, { maxAge: 300, sameSite: "Lax" })).redirect(u.toString());
   });
-  app.get("/oidc/callback", async (req, reply) => {
+  app.get("/oidc/callback", loginLimit, async (req, reply) => {
     const q = req.query as Record<string, string | undefined>;
     const fail = async (why: string, sub = "unknown") => {
       d.log.warn({ "event.category": "security", "event.action": "admin.login", "event.outcome": "failure", reason: why }, "security_event");
