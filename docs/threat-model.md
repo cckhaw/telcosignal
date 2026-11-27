@@ -108,3 +108,4 @@ F1 participant→gateway→participant API; F2 token issuance (client creds); F3
 | R-004 | Standards texts not all verified | Compliance | Open |
 | R-005 | WAF/DDoS assumed, not implemented in repo | Infra | Open |
 | R-006 | No independent pen-test/code review yet | CISO | Open |
+| R-007 | Runtime image uses Debian slim + `apt-get upgrade` because the distroless base shipped unpatched OpenSSL (Trivy, 2026-11-27); revisit when distroless is patched | Platform | Open |
