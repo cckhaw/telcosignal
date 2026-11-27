@@ -9,3 +9,4 @@
 | D-005 | Targets (p95<100 ms overhead, 2 s timeout, 200 rps) | Assumption | Used as configurable defaults. |
 | D-006 | Standards texts (ASVS 5.0, FAPI 2.0, CAMARA, BNM RMiT Nov-2025, PDPA 2024, CSA 2024) | Verify | Marked **unverified** until fetched and read. |
 | D-007 | CAMARA specs must be pinned from camaraproject repos; if unreachable, stop. | Pending M1 | See compliance matrix / M1 gate. |
+| H-001 | Enable branch protection on main requiring the `gate` check (cannot be set from the session) | Needs repo owner | Open until set |
