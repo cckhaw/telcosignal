@@ -78,6 +78,7 @@ const adminEnv: Record<string, string> = {
   IDP_CERT_FILE: w("pki/idp.crt", idpSrv.cert), IDP_KEY_FILE: w("pki/idp.key", idpSrv.key), IDP_PORT: String(idpPort), ADMIN_REDIRECT_URI: `https://localhost:${adminPort}/oidc/callback`,
 };
 w("admin.env", Object.entries(adminEnv).map(([k, v]) => `${k}=${v}`).join("\n") + "\n");
+w("worker.env", `TS_WORKER_URL=${dbEnv["TS_WORKER_URL"]}\n`);
 w("env", Object.entries(env).map(([k, v]) => `${k}=${v}`).join("\n") + "\n");
 // Variant for the Docker Compose network: service host names, and secrets mounted read-only at /run/sandbox.
 const inC = (v: string) => v.replace(out, "/run/sandbox").replace("127.0.0.1:5432", "postgres:5432").replace("127.0.0.1:6379", "redis:6379").replace(/https:\/\/localhost:(910\d)/g, "https://mocks:$1");

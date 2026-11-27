@@ -132,7 +132,7 @@ jobs:
           TS_ADMIN_URL: postgres://postgres:ci-ephemeral-only@127.0.0.1:5432/postgres
           TS_REDIS_URL: redis://127.0.0.1:6379/0
         run: npx tsx scripts/sandbox-setup.ts .sandbox
-      - name: start mock telcos, mock IdP, the participant platform and the admin portal
+      - name: start mock telcos, mock IdP, the participant platform, the admin portal and the worker
         run: |
           set -a; . .sandbox/env; set +a
           nohup npx tsx mock/run-mocks.ts > mocks.log 2>&1 &
@@ -140,6 +140,8 @@ jobs:
           set -a; . .sandbox/admin.env; set +a
           nohup npx tsx mock/run-idp.ts > idp.log 2>&1 &
           nohup npx tsx src/admin/main.ts > admin.log 2>&1 &
+          set -a; . .sandbox/worker.env; set +a
+          nohup npx tsx src/worker/main.ts > worker.log 2>&1 &
           for _ in $(seq 1 60); do
             if grep -q "SANDBOX: synthetic" platform.log && grep -q "SANDBOX: synthetic" admin.log && grep -q "mock IdP" idp.log; then echo up; exit 0; fi
             sleep 1
@@ -153,7 +155,7 @@ jobs:
         run: npx tsx tests/dast/admin.ts .sandbox
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with: { name: dast-reports, path: "dast-report.json\ndast-admin-report.json\nplatform.log\nadmin.log\nidp.log\nmocks.log" }
+        with: { name: dast-reports, path: "dast-report.json\ndast-admin-report.json\nplatform.log\nadmin.log\nidp.log\nmocks.log\nworker.log" }
   gate:
     if: always()
     needs: [secret-scan, sast, codeql, dependency-scan, build-test, container-iac-scan, workflow-lint, dast]

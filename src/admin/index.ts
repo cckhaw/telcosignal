@@ -1,12 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { buildAdminServer, type AdminDeps } from "./server.js";
 import { registerPages } from "./pages.js";
+import { registerOpsPages } from "./ops-pages.js";
 import type { Pool } from "../db/pool.js";
 import type { QueryPool } from "../adapters/registry.js";
 export type { AdminConfig, AdminDeps } from "./server.js";
 export async function buildAdmin(d: AdminDeps): Promise<FastifyInstance> {
   const { app, route } = await buildAdminServer(d);
   registerPages(d, route);
+  registerOpsPages(d, route);
   return app;
 }
 

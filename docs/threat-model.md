@@ -122,3 +122,11 @@ New residual risks: R-010 telco conformance results are asserted by the platform
 | R-013 | No per-telco certificate pinning/onboarding workflow | Integration | Open |
 | R-014 | Single-person safety actions (engage kill switch, revoke credential, suspend org) | Operations | Accepted by design, alerts in M4b |
 | R-015 | Admin rate-limit counters are in-process (not shared across admin instances) | Platform | Open |
+
+## Status update after M4b (tests exist and pass in the sandbox)
+T-043 (XSS through log content), T-045 (logs and audit cannot be edited), T-048 (no unmask; no numbers in any screen or export), T-064 (no numbers in logs/telemetry; CHECK constraints), T-066 (dashboards reconcile with usage records), AB-08 (exports role-restricted, audited, masked, formula-safe).
+| R-016 | Percentiles are bucket upper bounds; availability is a platform-side approximation | Platform | Accepted, documented |
+| R-017 | No shipping of SIEM events to an external SIEM | Security Operations | Open |
+| R-018 | No pager/e-mail delivery for alerts | Operations | Open |
+| R-019 | Request-log write is best effort (gaps possible if the write fails; the failure is logged) | Platform | Accepted, documented |
+| R-020 | No partitioning/archival or capacity testing of request log and rollups | Platform | Open (M5 load test) |
