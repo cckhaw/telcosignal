@@ -10,3 +10,7 @@ coverage/
 secrets/
 .vercel/
 sbom.cdx.json
+.sandbox/
+dast-report.json
+platform.log
+mocks.log

@@ -111,17 +111,43 @@ jobs:
           ./actionlint
   dast:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: ci-ephemeral-only }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { persist-credentials: false }
-      - name: DAST against running sandbox
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --ignore-scripts
+      - name: generate sandbox (synthetic data; all secrets and certificates generated now)
+        env:
+          TS_ADMIN_URL: postgres://postgres:ci-ephemeral-only@127.0.0.1:5432/postgres
+          TS_REDIS_URL: redis://127.0.0.1:6379/0
+        run: npx tsx scripts/sandbox-setup.ts .sandbox
+      - name: start mock telcos and the platform
         run: |
-          if [ ! -f deploy/compose.sandbox.yml ]; then
-            echo "::warning::DAST NOT YET APPLICABLE (no runnable sandbox until M1). Recorded as not-met in compliance matrix."
-            echo "DAST: not applicable yet" >> "$GITHUB_STEP_SUMMARY"; exit 0
-          fi
-          docker compose -f deploy/compose.sandbox.yml up -d --build --wait
-          docker run --network host -v "$PWD/openapi:/zap/wrk:ro" ghcr.io/zaproxy/zaproxy:2.16.1 zap-api-scan.py -t /zap/wrk/participant.yaml -f openapi -c /zap/wrk/zap.conf -I -x /tmp/zap.xml || exit 1
+          set -a; . .sandbox/env; set +a
+          nohup npx tsx mock/run-mocks.ts > mocks.log 2>&1 &
+          nohup npx tsx src/main.ts > platform.log 2>&1 &
+          for _ in $(seq 1 60); do
+            if grep -q "SANDBOX: synthetic" platform.log; then echo up; exit 0; fi
+            sleep 1
+          done
+          echo "::error::platform did not start"; cat platform.log mocks.log; exit 1
+      - name: DAST against the running sandbox (mTLS, tokens, signed requests; OWASP API Top 10 checks)
+        env: { DAST_REPORT: dast-report.json }
+        run: npx tsx tests/dast/run.ts .sandbox https://localhost:8443
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with: { name: dast-report, path: "dast-report.json\nplatform.log\nmocks.log" }
   gate:
     if: always()
     needs: [secret-scan, sast, codeql, dependency-scan, build-test, container-iac-scan, workflow-lint, dast]

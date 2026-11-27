@@ -16,7 +16,9 @@ import { certThumbprint, issueAccessToken, verifyAccessToken, verifyClientAssert
 import { clientUsable, lookupClient, type ClientRec } from "../identity/clients.js";
 import { consentValid, createConsent, getConsent, revokeConsent, subjectHash } from "../consent/consent.js";
 import { routeNumber } from "../router/router.js";
-import { UUID_RE, validateCreateConsent, validateSimSwapCheck } from "./schemas.js";
+import { KYC_FIELDS, UUID_RE, validateCallForwardingCheck, validateCreateConsent, validateDeviceSwapCheck, validateKycMatch, validateSimSwapCheck } from "./schemas.js";
+import type { KycInput } from "../adapters/types.js";
+import type { Signal } from "../consent/consent.js";
 
 export interface Deps { rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: Map<string, TelcoAdapter>; log: Logger }
 interface Ctx { client: ClientRec; thumb: string; scopes: string[]; correlationId: string }
@@ -146,45 +148,65 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     return { id, revoked: true, correlationId: ctx.correlationId };
   });
 
-  // ---------- SIM swap ----------
-  app.post("/v1/signals/sim-swap/check", async (req, reply) => {
-    const t0 = performance.now();
-    const ctx = await authenticate(req, "sim-swap:check");
-    await verifyRequestSignature(d.pool, d.store, { jws: hdr(req, "x-request-signature"), clientId: ctx.client.clientId, thumb: ctx.thumb, method: "POST", path: "/v1/signals/sim-swap/check", rawBody: req.body as Buffer, skewSeconds: d.cfg.requestSkewSeconds });
-    const b = parseBody(req.body);
-    if (!validateSimSwapCheck(b)) throw new ApiError("INVALID_REQUEST", "schema");
-    const body = b as { phoneNumber: string; maxAge?: number; purposeCode: string; consentRef: string };
-    const org = ctx.client.orgId;
-    const meter = async (outcome: string, telco: string | null, telcoMs: number) => {
-      const billable = outcome === "TRUE" || outcome === "FALSE";   // no charge on platform/telco failure, unsupported or rejection
-      await withOrgTx(d.pool, org, (tx) => tx.query(
-        "INSERT INTO usage_record(org_id, signal, telco_id, outcome, billable, total_ms, telco_ms, correlation_id) VALUES ($1,'SIM_SWAP',$2,$3,$4,$5,$6,$7)",
-        [org, telco, outcome, billable, Math.max(0, Math.round(performance.now() - t0)), Math.round(telcoMs), ctx.correlationId]));
-    };
+  // ---------- signals (one hardened pipeline for every signal) ----------
+  interface SignalDef { path: string; scope: string; signal: Signal; validate: (b: unknown) => boolean; maxAge: boolean }
+  const SIGNAL_DEFS: SignalDef[] = [
+    { path: "/v1/signals/sim-swap/check", scope: "sim-swap:check", signal: "SIM_SWAP", validate: validateSimSwapCheck, maxAge: true },
+    { path: "/v1/signals/device-swap/check", scope: "device-swap:check", signal: "DEVICE_SWAP", validate: validateDeviceSwapCheck, maxAge: true },
+    { path: "/v1/signals/call-forwarding/check", scope: "call-forwarding:check", signal: "CALL_FORWARDING", validate: validateCallForwardingCheck, maxAge: false },
+    { path: "/v1/signals/kyc-match/check", scope: "kyc-match:check", signal: "KYC_MATCH", validate: validateKycMatch, maxAge: false },
+  ];
+  for (const def of SIGNAL_DEFS) {
+    app.post(def.path, async (req, reply) => {
+      const t0 = performance.now();
+      const ctx = await authenticate(req, def.scope);
+      await verifyRequestSignature(d.pool, d.store, { jws: hdr(req, "x-request-signature"), clientId: ctx.client.clientId, thumb: ctx.thumb, method: "POST", path: def.path, rawBody: req.body as Buffer, skewSeconds: d.cfg.requestSkewSeconds });
+      const b = parseBody(req.body);
+      if (!def.validate(b)) throw new ApiError("INVALID_REQUEST", "schema");
+      const body = b as { phoneNumber: string; maxAge?: number; purposeCode: string; consentRef: string } & KycInput;
+      const org = ctx.client.orgId;
+      const meter = async (outcome: string, telco: string | null, telcoMs: number) => {
+        const billable = outcome === "TRUE" || outcome === "FALSE";   // no charge on platform/telco failure, unsupported or rejection
+        await withOrgTx(d.pool, org, (tx) => tx.query(
+          "INSERT INTO usage_record(org_id, signal, telco_id, outcome, billable, total_ms, telco_ms, correlation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+          [org, def.signal, telco, outcome, billable, Math.max(0, Math.round(performance.now() - t0)), Math.round(telcoMs), ctx.correlationId]));
+      };
 
-    // Kill switches fail closed: if state cannot be read, the request is not served.
-    const ks = await d.pool.query("SELECT scope, key FROM kill_switch WHERE enabled AND ((scope='participant' AND key=$1) OR (scope='signal' AND key='SIM_SWAP'))", [ctx.client.clientId]);
-    if (ks.rows.some((r) => r.scope === "participant")) { await meter("REJECTED", null, 0); throw new ApiError("ACCESS_DENIED", "participant kill switch"); }
+      // Kill switches fail closed: if state cannot be read, the request is not served.
+      const ks = await d.pool.query("SELECT scope FROM kill_switch WHERE enabled AND ((scope='participant' AND key=$1) OR (scope='signal' AND key=$2))", [ctx.client.clientId, def.signal]);
+      if (ks.rows.some((r) => r.scope === "participant")) { await meter("REJECTED", null, 0); throw new ApiError("ACCESS_DENIED", "participant kill switch"); }
+      const sg = await d.pool.query("SELECT enabled FROM signals WHERE id = $1", [def.signal]);
+      const signalOn = sg.rows[0]?.enabled === true && !ks.rows.some((r) => r.scope === "signal");
 
-    const hash = await subjectHash(d.kms, body.phoneNumber);
-    const consentOk = await withOrgTx(d.pool, org, (tx) => consentValid(tx, { consentRef: body.consentRef, subjectHash: hash, purpose: body.purposeCode, signal: "SIM_SWAP" }));
-    if (!consentOk) { await meter("REJECTED", null, 0); throw new ApiError("CONSENT_REQUIRED", "consent missing, expired, revoked, wrong subject/purpose/signal"); }
+      const hash = await subjectHash(d.kms, body.phoneNumber);
+      const consentOk = await withOrgTx(d.pool, org, (tx) => consentValid(tx, { consentRef: body.consentRef, subjectHash: hash, purpose: body.purposeCode, signal: def.signal }));
+      if (!consentOk) { await meter("REJECTED", null, 0); throw new ApiError("CONSENT_REQUIRED", "consent missing, expired, revoked, wrong subject/purpose/signal"); }
 
-    let status: "TRUE" | "FALSE" | "UNAVAILABLE" | "NOT_SUPPORTED" = "UNAVAILABLE", telcoId: string | null = null, telcoMs = 0, reason = "no route";
-    if (ks.rows.some((r) => r.scope === "signal")) reason = "signal kill switch";
-    else {
-      telcoId = await routeNumber(d.pool, body.phoneNumber);
-      const adapter = telcoId ? d.adapters.get(telcoId) : undefined;
-      if (adapter) {
-        const tk = await d.pool.query("SELECT 1 FROM kill_switch WHERE enabled AND scope='telco' AND key=$1", [telcoId]);
-        if (tk.rowCount) reason = "telco kill switch";
-        else { const r = await adapter.call({ signal: "SIM_SWAP", msisdn: body.phoneNumber, ...(body.maxAge !== undefined ? { maxAgeHours: body.maxAge } : {}), correlationId: ctx.correlationId }); status = r.status; telcoMs = r.telcoMs; reason = r.reason; }
+      let status: "TRUE" | "FALSE" | "UNAVAILABLE" | "NOT_SUPPORTED" = "UNAVAILABLE", telcoId: string | null = null, telcoMs = 0, reason = "no route";
+      let fields: Record<string, string> | undefined;
+      if (!signalOn) reason = "signal disabled";
+      else {
+        const route = await routeNumber(d.pool, d.kms, body.phoneNumber, def.signal);
+        if (route.kind !== "none") telcoId = route.telcoId;
+        if (route.kind === "unsupported") { status = "NOT_SUPPORTED"; reason = "telco does not cover this signal"; }
+        else if (route.kind === "route") {
+          const adapter = d.adapters.get(route.telcoId);
+          const tk = await d.pool.query("SELECT 1 FROM kill_switch WHERE enabled AND scope='telco' AND key=$1", [route.telcoId]);
+          if (!adapter) reason = "no adapter";
+          else if (tk.rowCount) reason = "telco kill switch";
+          else {
+            const kyc: KycInput = {};
+            if (def.signal === "KYC_MATCH") for (const f of KYC_FIELDS) { const v = (body as Record<string, unknown>)[f]; if (typeof v === "string") kyc[f] = v; }
+            const r = await adapter.call({ signal: def.signal, msisdn: body.phoneNumber, ...(def.maxAge && body.maxAge !== undefined ? { maxAgeHours: body.maxAge } : {}), ...(def.signal === "KYC_MATCH" ? { kyc } : {}), correlationId: ctx.correlationId });
+            status = r.status; telcoMs = r.telcoMs; reason = r.reason; fields = r.fields;
+          }
+        }
       }
-    }
-    await meter(status, telcoId, telcoMs);
-    await d.audit.record({ correlationId: ctx.correlationId, actor: ctx.client.clientId, action: "signal.sim_swap.check", orgId: org, outcome: status, detail: { telco: telcoId ?? "none", telco_ms: Math.round(telcoMs), reason } });
-    return reply.send({ signal: "SIM_SWAP", result: status, correlationId: ctx.correlationId });
-  });
+      await meter(status, telcoId, telcoMs);
+      await d.audit.record({ correlationId: ctx.correlationId, actor: ctx.client.clientId, action: `signal.${def.signal.toLowerCase()}.check`, orgId: org, outcome: status, detail: { telco: telcoId ?? "none", telco_ms: Math.round(telcoMs), reason } });
+      return reply.send({ signal: def.signal, result: status, ...(fields ? { fields } : {}), correlationId: ctx.correlationId });
+    });
+  }
 
   return app as unknown as FastifyInstance;
 }
