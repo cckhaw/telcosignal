@@ -25,7 +25,7 @@ Status: met / partial / not met / needs human decision. A row is "met" only when
 | SC-05 | Pinned deps + lockfile | exact pins, `check-pins.mjs`, `ignore-scripts` | package.json, scripts | CI | met (locally verified) |
 | SC-06 | SBOM | CycloneDX via `npm sbom` | ci.yml `build-test` | CI artifact | partial |
 | SC-07 | Signed builds | attestation/cosign | – | – | not met (M1+) |
-| SC-08 | Actions pinned by SHA | pinned by version tag; SHA pin pending (3rd-party repo lookups unavailable in session) | ci.yml | – | partial (T-072) |
+| SC-08 | Actions pinned by commit SHA (version in comment) | ci.yml, deploy-production.yml | semgrep mutable-tag rule | met (pending CI) |
 | SC-09 | Minimal non-root, read-only containers | distroless nonroot Dockerfile; read-only in compose (M1) | docker/Dockerfile | Trivy | partial |
 | SC-10 | DAST on running sandbox | ZAP against compose sandbox | ci.yml `dast` | – | not met (sandbox arrives M1) |
 | DEP-01 | No preview deployments; prod only | `git.deploymentEnabled=false`; workflow on `main` push only | vercel.json, deploy-production.yml | config check | partial |

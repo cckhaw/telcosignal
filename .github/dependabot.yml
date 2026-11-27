@@ -1,5 +1,5 @@
 version: 2
 updates:
-  - { package-ecosystem: npm, directory: "/", schedule: { interval: weekly }, open-pull-requests-limit: 10 }
-  - { package-ecosystem: github-actions, directory: "/", schedule: { interval: weekly } }
-  - { package-ecosystem: docker, directory: "/docker", schedule: { interval: weekly } }
+  - { package-ecosystem: npm, directory: "/", schedule: { interval: weekly }, open-pull-requests-limit: 10, cooldown: { default-days: 7 } }
+  - { package-ecosystem: github-actions, directory: "/", schedule: { interval: weekly }, cooldown: { default-days: 7 } }
+  - { package-ecosystem: docker, directory: "/docker", schedule: { interval: weekly }, cooldown: { default-days: 7 } }
