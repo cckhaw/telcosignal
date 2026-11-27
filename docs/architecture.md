@@ -71,3 +71,18 @@ Decision: Vercel Production hosts **only the static developer portal/docs** (pub
 | App DB (Neon, planned) | AWS Singapore | Outside Malaysia → open cross-border risk R-001, blocks live data |
 | Local dev/CI | Ephemeral | Synthetic only |
 | Audit external copy | TBD | Must be in approved jurisdiction |
+
+## 11. Participant API vs pinned CAMARA definitions (deliberate deviations)
+The CAMARA definitions are pinned in `openapi/camara/PINS.md` (SimSwap r4.3, DeviceSwap r4.3, CallForwardingSignal r4.3, KnowYourCustomer r2.2). Telco A (mock) implements `sim-swap check` as published. The **participant-facing** API differs on purpose, because of the signal-safety and privacy rules:
+| CAMARA behaviour | Platform behaviour | Reason |
+|---|---|---|
+| `swapped: boolean` | `result: TRUE \| FALSE \| UNAVAILABLE \| NOT_SUPPORTED` | A timeout/error must never read as "no swap". |
+| 404 `IDENTIFIER_NOT_FOUND` for unknown numbers | Never 404 for numbers; unknown/unrouted/failed all → `UNAVAILABLE` | No existence oracle. |
+| Three-legged consent implied by OIDC | Mandatory `purposeCode` + `consentRef`, resolved server-side per organisation | PDPA purpose limitation / lawful basis. |
+| OpenID Connect token | Client credentials, `private_key_jwt`, mTLS-bound (`cnf.x5t#S256`) tokens, signed requests | FAPI 2.0-style sender constraint; replay rejection. |
+
+## 12. M1 implementation notes
+* `src/identity`: token issue/verify (`jose`), client assertion, request signature + replay (Redis `SET NX`, fails closed → 503).
+* Authentication lookups use two narrow `SECURITY DEFINER` functions owned by a dedicated role (BYPASSRLS, read-only on 3 tables); the application role never reads other tenants.
+* `audit_append()` computes the hash chain inside the DB under an advisory lock; an external JSONL copy is written after commit; `verifyAuditChain` recomputes both.
+* Known gap carried to M2: DAST needs a runnable sandbox (`deploy/compose.sandbox.yml`, `src/main.ts`); tracked in the compliance matrix as not met.
