@@ -35,10 +35,17 @@ try { await admin.query(`CREATE ROLE ${t} NOLOGIN BYPASSRLS`); await admin.query
 catch (e) { step("can create a BYPASSRLS definer role", false, String(e.message)); await admin.end(); finish(1); }
 await admin.end();
 
+const redact = (t) => String(t).replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"]+/gi, "[url]").replace(new RegExp(u.password.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "[secret]").slice(0, 600);
+// 2b. run the database setup once, directly, and show a REDACTED error if it fails (the test harness hides the cause)
+const probe = spawnSync("node", ["scripts/db-setup.mjs", "-", "ts_t_probe_neon", "neon-probe.env"], { env: { ...process.env, TS_DB_SETUP_ADMIN_URL: pick }, encoding: "utf8" });
+step("database setup (roles + database) on Neon", probe.status === 0, probe.status === 0 ? undefined : redact(probe.stderr.split("\n").filter((l) => /error|permission|must|cannot|denied|exist/i.test(l)).slice(0, 3).join(" | ")));
+if (probe.status !== 0) finish(1);
+if (probe.status === 0) { const d = new pg.Client({ connectionString: pick }); await d.connect(); await d.query('DROP DATABASE IF EXISTS ts_t_probe_neon WITH (FORCE)'); await d.end(); }
+
 // 3. run the full test suite against Neon: each test file creates its own ts_t_* database and drops it afterwards
 const env = { ...process.env, TS_TEST_ADMIN_URL: pick, TS_TEST_REDIS_URL: process.env.TS_TEST_REDIS_URL ?? "redis://127.0.0.1:6379/15", NEON_CANDIDATES: "" };
-const r = spawnSync("npx", ["vitest", "run", "--reporter=json", "--outputFile=neon-vitest.json"], { env, stdio: ["ignore", "inherit", "inherit"] });
+const r = spawnSync("npx", ["vitest", "run", "--reporter=json", "--outputFile=/tmp/neon-vitest.json"], { env, stdio: ["ignore", "ignore", "inherit"] });   // raw report stays on the runner (it can echo connection details); only the redacted summary below is kept
 let summary = null;
-try { const j = JSON.parse((await import("node:fs")).readFileSync("neon-vitest.json", "utf8")); summary = { files: j.numTotalTestSuites, tests: j.numTotalTests, passed: j.numPassedTests, failed: j.numFailedTests, failedNames: j.testResults.flatMap((f) => f.assertionResults.filter((a) => a.status === "failed").map((a) => `${f.name.split("/").slice(-1)[0]}: ${a.title}`.slice(0, 200))) }; } catch { /* leave null */ }
+try { const j = JSON.parse((await import("node:fs")).readFileSync("/tmp/neon-vitest.json", "utf8")); summary = { files: j.numTotalTestSuites, tests: j.numTotalTests, passed: j.numPassedTests, failed: j.numFailedTests, failedNames: j.testResults.flatMap((f) => f.assertionResults.filter((a) => a.status === "failed").map((a) => redact(`${f.name.split("/").slice(-1)[0]}: ${a.title}`))) }; } catch { /* leave null */ }
 report.vitest = summary; step("full test suite against Neon", r.status === 0, summary ? `${summary.passed}/${summary.tests} passed` : `exit ${r.status}`);
 finish(r.status === 0 ? 0 : 1);
