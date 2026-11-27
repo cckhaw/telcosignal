@@ -85,17 +85,17 @@ jobs:
         with: { persist-credentials: false }
       - name: build image
         run: docker build -f docker/Dockerfile -t telco-signal:ci .
-      - name: install trivy (checksum verified)
+      - name: install trivy (signed apt repository)
         run: |
-          V=0.62.1
-          curl -sSfLO https://github.com/aquasecurity/trivy/releases/download/v$V/trivy_${V}_Linux-64bit.tar.gz
-          curl -sSfLO https://github.com/aquasecurity/trivy/releases/download/v$V/trivy_${V}_checksums.txt
-          sha256sum --ignore-missing -c trivy_${V}_checksums.txt
-          tar xzf trivy_${V}_Linux-64bit.tar.gz trivy
+          sudo apt-get install -y wget gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -qq && sudo apt-get install -y trivy
+          trivy --version
       - name: trivy image (HIGH/CRITICAL block)
-        run: ./trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --scanners vuln,secret telco-signal:ci
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --scanners vuln,secret telco-signal:ci
       - name: trivy IaC / config (HIGH/CRITICAL block)
-        run: ./trivy config --severity HIGH,CRITICAL --exit-code 1 .
+        run: trivy config --severity HIGH,CRITICAL --exit-code 1 .
   workflow-lint:
     runs-on: ubuntu-24.04
     steps:
