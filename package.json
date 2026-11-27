@@ -23,6 +23,8 @@
     "dast:admin": "tsx tests/dast/admin.ts .sandbox",
     "gen:openapi": "tsx scripts/gen-openapi.ts",
     "gen:portal": "tsx scripts/build-portal.ts",
+    "gen:traceability": "tsx scripts/gen-traceability.ts",
+    "load": "tsx tests/load/run.ts .sandbox https://localhost:8443 200 60 load-report.json",
     "worker": "tsx src/worker/main.ts"
   },
   "devDependencies": {

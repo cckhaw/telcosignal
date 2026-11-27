@@ -13,6 +13,7 @@ export interface Config {
   telcoAllowList: string[];  // exact origins only
   telcoTimeoutMs: number;
   requestSkewSeconds: number;
+  minResponseMs?: number;           // AB-09 timing floor for refusals and telco-less answers (0 disables)
   rateLimitPerSecond: number;      // per client certificate, all routes
   tokenRateLimitPerSecond: number; // per client certificate, token endpoint
   limits: LimitConfig; abuse: AbuseConfig; resilience: ResilienceConfig;
@@ -51,9 +52,10 @@ export function loadConfig(env = process.env): Config {
     telcoAllowList: need("TS_TELCO_ALLOWLIST").split(",").map((s) => s.trim()).filter(Boolean),
     telcoTimeoutMs: Number(process.env["TS_TELCO_TIMEOUT_MS"] ?? 2000),
     requestSkewSeconds: Number(process.env["TS_REQUEST_SKEW_SECONDS"] ?? 60),
+    minResponseMs: Number(process.env["TS_MIN_RESPONSE_MS"] ?? 40),
     rateLimitPerSecond: Number(process.env["TS_RATE_LIMIT_RPS"] ?? 100),
     tokenRateLimitPerSecond: Number(process.env["TS_TOKEN_RATE_LIMIT_RPS"] ?? 10),
-    limits: { perParticipantSignalPerMinute: num("TS_LIMIT_PARTICIPANT_SIGNAL_PER_MIN", DEFAULT_LIMITS.perParticipantSignalPerMinute), perTelcoPerSecond: num("TS_LIMIT_TELCO_PER_SEC", DEFAULT_LIMITS.perTelcoPerSecond), perSubjectPerHour: num("TS_LIMIT_SUBJECT_PER_HOUR", DEFAULT_LIMITS.perSubjectPerHour) },
+    limits: { perParticipantSignalPerMinute: num("TS_LIMIT_PARTICIPANT_SIGNAL_PER_MIN", DEFAULT_LIMITS.perParticipantSignalPerMinute), perTelcoPerSecond: num("TS_LIMIT_TELCO_PER_SEC", DEFAULT_LIMITS.perTelcoPerSecond), perSubjectPerHour: num("TS_LIMIT_SUBJECT_PER_HOUR", DEFAULT_LIMITS.perSubjectPerHour), perParticipantConsentPerMinute: num("TS_LIMIT_CONSENT_PER_MIN", DEFAULT_LIMITS.perParticipantConsentPerMinute) },
     abuse: { windowSeconds: num("TS_ABUSE_WINDOW_S", DEFAULT_ABUSE.windowSeconds), distinctSubjects: num("TS_ABUSE_DISTINCT", DEFAULT_ABUSE.distinctSubjects), sameRangeSubjects: num("TS_ABUSE_SAME_RANGE", DEFAULT_ABUSE.sameRangeSubjects), consentFailures: num("TS_ABUSE_CONSENT_FAILS", DEFAULT_ABUSE.consentFailures), autoSuspend: process.env["TS_ABUSE_AUTOSUSPEND"] === "true" },
     resilience: { windowMs: num("TS_BREAKER_WINDOW_MS", DEFAULT_RESILIENCE.windowMs), minRequests: num("TS_BREAKER_MIN_REQUESTS", DEFAULT_RESILIENCE.minRequests), failureRate: num("TS_BREAKER_FAILURE_RATE", DEFAULT_RESILIENCE.failureRate), openMs: num("TS_BREAKER_OPEN_MS", DEFAULT_RESILIENCE.openMs), maxConcurrent: num("TS_BULKHEAD_MAX", DEFAULT_RESILIENCE.maxConcurrent) },
   };

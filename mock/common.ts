@@ -9,7 +9,7 @@ export async function startTlsMock(tls: MockTls, handle: (req: IncomingMessage, 
   const srv = https.createServer({ cert: tls.cert, key: tls.key, ca: tls.clientCa, requestCert: true, rejectUnauthorized: true }, (req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => { st.calls++; const raw = Buffer.concat(chunks).toString("utf8"); st.lastBody = raw; st.lastPath = req.url ?? null; handle(req, raw, res); });
+    req.on("end", () => { st.calls++; const raw = Buffer.concat(chunks).toString("utf8"); st.lastBody = raw; st.lastPath = req.url ?? null; const lat = Number(process.env["MOCK_LATENCY_MS"] ?? 0); if (lat > 0) setTimeout(() => handle(req, raw, res), lat); else handle(req, raw, res); });
   });
   await new Promise<void>((r) => srv.listen(port, process.env["MOCK_BIND"] ?? "127.0.0.1", r));
   return {

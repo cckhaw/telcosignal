@@ -1,0 +1,495 @@
+{
+ "_note": "Each threat-model entry maps to the tests/controls that prove it. tests/unit/traceability.test.ts checks every id, file and phrase exists; it does not run the tests (the suite does).",
+ "map": {
+  "T-001": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "rejects alg=none and HS256 tokens"
+   ],
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "rejects wrong audience, wrong issuer, expired"
+   ]
+  ],
+  "T-002": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "sender constraint"
+   ]
+  ],
+  "T-003": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "client authentication hygiene"
+   ]
+  ],
+  "T-004": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "body altered after signing"
+   ]
+  ],
+  "T-005": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "verifies, and records access without any phone number"
+   ]
+  ],
+  "T-006": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "indistinguishable from a telco failure"
+   ],
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "rejects expired, revoked, wrong-purpose, wrong-signal and wrong-subject consent identically"
+   ],
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "failed authentication gives one uniform answer"
+   ]
+  ],
+  "T-007": [
+   [
+    "tests/security/m1-ratelimit.test.ts",
+    "rate limiting (baseline"
+   ],
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "a flood above the limit is shed with 429"
+   ],
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "slow headers do not hold a connection"
+   ]
+  ],
+  "T-008": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "M1 acceptance: wrong scope"
+   ]
+  ],
+  "T-009": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "rejects an identical signed request replayed"
+   ],
+   [
+    "tests/security/m1-controls.test.ts",
+    "fail closed when the replay store is down"
+   ]
+  ],
+  "T-010": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "refuses TLS 1.1 and below"
+   ],
+   [
+    "tests/security/m1-controls.test.ts",
+    "negotiates TLS 1.3 by default"
+   ]
+  ],
+  "T-011": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "rejects unknown fields (mass assignment)"
+   ],
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "read-only and server-controlled properties cannot be written"
+   ]
+  ],
+  "T-012": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "__proto__ / constructor pollution"
+   ]
+  ],
+  "T-013": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "M1 acceptance: cross-participant access"
+   ],
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "API1:2023 broken object level authorization"
+   ]
+  ],
+  "T-014": [
+   [
+    "tests/security/m4a-auth.test.ts",
+    "the participant and admin planes are separate"
+   ]
+  ],
+  "T-020": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "application role: not owner, no bypass"
+   ]
+  ],
+  "T-021": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "does not leak across pooled connection reuse"
+   ]
+  ],
+  "T-022": [
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "error bodies never contain stack traces"
+   ],
+   [
+    "tests/security/m4b-logs-trace.test.ts",
+    "hostile filter input is refused without reaching SQL"
+   ],
+   [
+    "tests/dast/run.ts",
+    "' OR '1'='1"
+   ],
+   [
+    ".semgrep/project.yml",
+    "no-raw-sql-concat"
+   ]
+  ],
+  "T-023": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "no E.164 number in logs, audit, usage records or consent rows"
+   ]
+  ],
+  "T-024": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "M1 acceptance: missing / invalid consent"
+   ]
+  ],
+  "T-025": [
+   [
+    "tests/security/m2-signals.test.ts",
+    "KYC inputs are never stored or logged"
+   ]
+  ],
+  "T-026": [
+   [
+    "tests/security/m4b-backup-restore.test.ts",
+    "TESTED RESTORE"
+   ]
+  ],
+  "T-030": [
+   [
+    "tests/security/m2-signals.test.ts",
+    "malicious or broken telco/aggregator responses are rejected"
+   ]
+  ],
+  "T-031": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "signal safety: failures are UNAVAILABLE / NOT_SUPPORTED, never FALSE"
+   ]
+  ],
+  "T-032": [
+   [
+    "tests/security/m2-signals.test.ts",
+    "adapters refuse endpoints that are not on the allow-list"
+   ],
+   [
+    "tests/security/m4a-onboarding.test.ts",
+    "SSRF-prone URLs are refused"
+   ]
+  ],
+  "T-033": [
+   [
+    "tests/security/m2-signals.test.ts",
+    "untrusted CA is not trusted"
+   ]
+  ],
+  "T-034": [
+   [
+    "tests/security/m3-resilience.test.ts",
+    "fault injection: circuit breaker"
+   ],
+   [
+    "tests/security/m3-resilience.test.ts",
+    "bulkhead (bounded concurrency per telco)"
+   ],
+   [
+    "tests/security/m1-controls.test.ts",
+    "the timeout bound holds"
+   ]
+  ],
+  "T-035": [
+   [
+    "tests/security/m2-signals.test.ts",
+    "the telco receives only what the signal needs"
+   ]
+  ],
+  "T-036": [
+   [
+    "tests/security/m2-signals.test.ts",
+    "PORTING: a number ported from A"
+   ],
+   [
+    "tests/security/m4a-approval.test.ts",
+    "porting: the number is hashed in the portal"
+   ]
+  ],
+  "T-037": [
+   [
+    "tests/security/m2-signals.test.ts",
+    "aggregator answers are bound to the request"
+   ]
+  ],
+  "T-040": [
+   [
+    "tests/security/m4a-auth.test.ts",
+    "phishing-resistant MFA is mandatory (fail closed)"
+   ]
+  ],
+  "T-041": [
+   [
+    "tests/security/m4a-approval.test.ts",
+    "the two-person rule cannot be bypassed"
+   ]
+  ],
+  "T-042": [
+   [
+    "tests/security/m4a-auth.test.ts",
+    "CSRF: a state-changing request needs a valid token"
+   ]
+  ],
+  "T-043": [
+   [
+    "tests/security/m4a-auth.test.ts",
+    "XSS: hostile data is escaped everywhere"
+   ],
+   [
+    "tests/security/m4b-logs-trace.test.ts",
+    "escaped in the log views"
+   ]
+  ],
+  "T-044": [
+   [
+    "tests/security/m4a-isolation.test.ts",
+    "a restricted bank user sees only their own organisation"
+   ]
+  ],
+  "T-045": [
+   [
+    "tests/security/m4b-logs-trace.test.ts",
+    "logs cannot be edited or deleted by anyone"
+   ]
+  ],
+  "T-046": [
+   [
+    "tests/security/m4a-onboarding.test.ts",
+    "shown ONCE"
+   ]
+  ],
+  "T-047": [
+   [
+    "tests/security/m4a-auth.test.ts",
+    "every login issues a new session id"
+   ],
+   [
+    "tests/security/m4a-auth.test.ts",
+    "idle timeout (15 min) and absolute timeout (8 h)"
+   ]
+  ],
+  "T-048": [
+   [
+    "tests/security/m4b-logs-trace.test.ts",
+    "no raw phone number appears in any screen or export"
+   ]
+  ],
+  "T-049": [
+   [
+    "tests/security/m4a-approval.test.ts",
+    "gated rollback"
+   ]
+  ],
+  "T-050": [
+   [
+    "tests/security/m4a-approval.test.ts",
+    "kill switches: engaging is immediate"
+   ]
+  ],
+  "T-060": [
+   [
+    "tests/security/m1-ratelimit.test.ts",
+    "fails closed when the rate-limit store is unavailable"
+   ],
+   [
+    "tests/security/m3-abuse.test.ts",
+    "fails closed when the limiter store is unavailable"
+   ]
+  ],
+  "T-061": [
+   [
+    ".github/workflows/ci.yml",
+    "secret-scan"
+   ],
+   [
+    "tests/security/m1-controls.test.ts",
+    "the key directory is private"
+   ],
+   [
+    "tests/security/m1-controls.test.ts",
+    "no E.164 number in logs"
+   ]
+  ],
+  "T-062": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "KMS: key versions and rotation"
+   ]
+  ],
+  "T-063": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "tampering by a superuser is detected"
+   ]
+  ],
+  "T-064": [
+   [
+    "tests/security/m5-telemetry.test.ts",
+    "telemetry attributes"
+   ]
+  ],
+  "T-065": [
+   [
+    "tests/security/m3-metering.test.ts",
+    "metering is append-only and failures are never charged"
+   ]
+  ],
+  "T-066": [
+   [
+    "tests/security/m4b-dashboards-alerts.test.ts",
+    "ACCEPTANCE: dashboard totals reconcile with usage records"
+   ]
+  ],
+  "T-070": [
+   [
+    ".github/workflows/ci.yml",
+    "dependency-scan"
+   ]
+  ],
+  "T-071": [
+   [
+    ".github/workflows/ci.yml",
+    "secret-scan"
+   ]
+  ],
+  "T-072": [
+   [
+    ".github/workflows/ci.yml",
+    "workflow-lint"
+   ]
+  ],
+  "T-073": [
+   [
+    ".github/workflows/ci.yml",
+    "container-iac-scan"
+   ]
+  ],
+  "T-074": [
+   [
+    "tests/security/m4b-openapi-portal.test.ts",
+    "hosting configuration enforces a strict content security policy"
+   ],
+   [
+    ".github/workflows/deploy-production.yml",
+    "VERCEL_TOKEN"
+   ]
+  ],
+  "T-075": [
+   [
+    "vercel.json",
+    "deploymentEnabled"
+   ],
+   [
+    ".github/workflows/deploy-production.yml",
+    "--prod"
+   ]
+  ],
+  "AB-01": [
+   [
+    "tests/security/m3-abuse.test.ts",
+    "enumeration and bulk-lookup detection"
+   ]
+  ],
+  "AB-02": [
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "M1 acceptance: missing / invalid consent"
+   ],
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "the signal flow cannot be run without a registered consent"
+   ]
+  ],
+  "AB-03": [
+   [
+    "tests/security/m4a-approval.test.ts",
+    "a requester can never approve"
+   ]
+  ],
+  "AB-04": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "signal safety"
+   ],
+   [
+    "tests/security/m2-signals.test.ts",
+    "malicious or broken telco/aggregator responses are rejected"
+   ]
+  ],
+  "AB-05": [
+   [
+    "tests/security/m3-metering.test.ts",
+    "metering is append-only and failures are never charged"
+   ],
+   [
+    "tests/security/m3-metering.test.ts",
+    "overlapping periods are refused"
+   ]
+  ],
+  "AB-06": [
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "API1:2023 broken object level authorization"
+   ],
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "bank-b cannot read, revoke or use bank-a"
+   ]
+  ],
+  "AB-07": [
+   [
+    "tests/security/m1-controls.test.ts",
+    "a certificate valid for the platform but not registered"
+   ],
+   [
+    "tests/security/m1-acceptance.test.ts",
+    "sender constraint"
+   ]
+  ],
+  "AB-08": [
+   [
+    "tests/security/m4b-logs-trace.test.ts",
+    "log exports are restricted to auditors/ops/admins"
+   ]
+  ],
+  "AB-09": [
+   [
+    "tests/security/m5-adversarial.test.ts",
+    "AB-09 timing"
+   ]
+  ],
+  "AB-10": [
+   [
+    "tests/security/m4a-onboarding.test.ts",
+    "SSRF-prone URLs are refused"
+   ]
+  ]
+ }
+}
