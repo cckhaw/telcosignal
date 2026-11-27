@@ -33,6 +33,9 @@ const defs = (await admin.query("select rolname, rolsuper, rolbypassrls, rolcanl
 const wrong = defs.filter((d) => d.rolsuper || d.rolcanlogin || d.rolbypassrls !== (d.rolname === "ts_lookup"));
 if (wrong.length || defs.length !== 4) throw new Error(`refusing to continue: definer roles with unexpected attributes: ${wrong.map((d) => d.rolname).join(", ") || "missing"}`);
 await q("GRANT ts_lookup, ts_audit, ts_switch, ts_config TO ts_migrator"); // lets the migrator hand ownership of definer functions to them
+// CREATE DATABASE ... OWNER <role> needs the creating role to be able to SET ROLE to it. A superuser always can; on managed Postgres (Neon) the
+// creator of a role holds ADMIN but not SET by default, so grant it explicitly (the creator can only do this for roles it created).
+await q(`GRANT ts_migrator TO CURRENT_USER WITH SET TRUE`);
 await q(`DROP DATABASE IF EXISTS ${ident(dbname)} WITH (FORCE)`);
 await q(`CREATE DATABASE ${ident(dbname)} OWNER ts_migrator`);
 await q(`REVOKE ALL ON DATABASE ${ident(dbname)} FROM PUBLIC`);
