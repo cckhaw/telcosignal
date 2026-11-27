@@ -14,3 +14,6 @@ sbom.cdx.json
 dast-report.json
 platform.log
 mocks.log
+dast-admin-report.json
+admin.log
+idp.log

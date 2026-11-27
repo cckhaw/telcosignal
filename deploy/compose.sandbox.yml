@@ -36,8 +36,26 @@ services:
     depends_on: [postgres, redis, mocks]
     networks: [edge, data, telco]
     <<: *hardened
+  idp:
+    build: { context: .., dockerfile: docker/Dockerfile, target: mock }
+    command: ["node", "dist/mock/run-idp.js"]
+    env_file: ["./.sandbox/env.compose"]
+    volumes: ["./.sandbox:/run/sandbox:ro"]
+    networks: [admin]
+    <<: *hardened
+  admin:                # isolated admin interface: its own network, its own DB role, its own key directory
+    build: { context: .., dockerfile: docker/Dockerfile, target: runtime }
+    command: ["node", "dist/admin/main.js"]
+    env_file: ["./.sandbox/admin.env"]
+    environment: { TS_ADMIN_BIND: 0.0.0.0 }
+    volumes: ["./.sandbox:/run/sandbox:ro", "./.sandbox/admin-kms:/run/sandbox/admin-kms", "./.sandbox/audit-sink.jsonl:/run/sandbox/audit-sink.jsonl"]
+    ports: ["127.0.0.1:9443:9443"]
+    depends_on: [postgres, idp]
+    networks: [admin, data, telco]
+    <<: *hardened
 networks:            # segmentation: edge (participants) / data (db, redis) / telco (outbound to telcos) are separate; admin network arrives in M4a
   edge: {}
   data: { internal: true }
   telco: { internal: true }
+  admin: {}
 volumes: { pgdata: {} }

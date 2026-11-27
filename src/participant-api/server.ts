@@ -11,7 +11,7 @@ import { withOrgTx } from "../db/pool.js";
 import type { EphemeralStore } from "../common/store.js";
 import type { Kms } from "../kms/types.js";
 import type { Audit } from "../audit/audit.js";
-import type { TelcoAdapter } from "../adapters/types.js";
+import type { AdapterSource } from "../adapters/registry.js";
 import { certThumbprint, issueAccessToken, verifyAccessToken, verifyClientAssertion, verifyRequestSignature } from "../identity/tokens.js";
 import { clientUsable, lookupClient, type ClientRec } from "../identity/clients.js";
 import { consentValid, createConsent, getConsent, revokeConsent, subjectHash } from "../consent/consent.js";
@@ -22,7 +22,7 @@ import { KYC_FIELDS, UUID_RE, validateCallForwardingCheck, validateCreateConsent
 import type { KycInput } from "../adapters/types.js";
 import type { Signal } from "../consent/consent.js";
 
-export interface Deps { limiter: Limiter; abuse: AbuseDetector; rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: Map<string, TelcoAdapter>; log: Logger }
+export interface Deps { limiter: Limiter; abuse: AbuseDetector; rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: AdapterSource; log: Logger }
 interface Ctx { client: ClientRec; thumb: string; scopes: string[]; correlationId: string }
 const TLS12_CIPHERS = "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
 
@@ -124,7 +124,8 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     if (!validateCreateConsent(b)) throw new ApiError("INVALID_REQUEST", "schema");
     const body = b as { phoneNumber: string; consentRef: string; purposeCode: string; signals: string[]; expiresAt: string };
     const exp = new Date(body.expiresAt);
-    if (Number.isNaN(exp.getTime()) || exp.getTime() <= Date.now() || exp.getTime() > Date.now() + 400 * 864e5) throw new ApiError("INVALID_REQUEST", "expiry out of range");
+    const maxDays = Number((await d.pool.query("SELECT value FROM platform_setting WHERE key='consent.max_days'")).rows[0]?.value ?? 0);   // configurable policy; fail closed if unset
+    if (Number.isNaN(exp.getTime()) || exp.getTime() <= Date.now() || !maxDays || exp.getTime() > Date.now() + maxDays * 864e5) throw new ApiError("INVALID_REQUEST", "expiry out of range");
     const hash = await subjectHash(d.kms, body.phoneNumber);
     const id = await withOrgTx(d.pool, ctx.client.orgId, (tx) => createConsent(tx, ctx.client.orgId, { consentRef: body.consentRef, subjectHash: hash, purpose: body.purposeCode, signals: body.signals, expiresAt: exp }));
     if (!id) throw new ApiError("INVALID_REQUEST", "duplicate consent reference");
@@ -196,6 +197,9 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
       const sg = await d.pool.query("SELECT enabled FROM signals WHERE id = $1", [def.signal]);
       const signalOn = sg.rows[0]?.enabled === true && !ks.rows.some((r) => r.scope === "signal");
 
+      // Entitlement: the organisation must be allowed this signal for this purpose (set during onboarding, changed only with approval).
+      const ent = await d.pool.query("SELECT purposes FROM org_entitlement WHERE org_id=$1 AND signal=$2", [org, def.signal]).catch(() => { throw new ApiError("SERVICE_UNAVAILABLE", "entitlement lookup failed"); });
+      if (!(ent.rows[0]?.purposes as string[] | undefined)?.includes(body.purposeCode)) { await meter("REJECTED", null, 0); throw new ApiError("ACCESS_DENIED", "signal/purpose not entitled"); }
       // Hard quotas first (cheap, before any consent/DB/telco work). Exceeding one is a generic 429; fail closed if the limiter store is down.
       const hash = await subjectHash(d.kms, body.phoneNumber);
       try {
@@ -215,7 +219,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
         if (route.kind !== "none") telcoId = route.telcoId;
         if (route.kind === "unsupported") { status = "NOT_SUPPORTED"; reason = "telco does not cover this signal"; }
         else if (route.kind === "route") {
-          const adapter = d.adapters.get(route.telcoId);
+          const adapter = await d.adapters.get(route.telcoId);
           const tk = await d.pool.query("SELECT 1 FROM kill_switch WHERE enabled AND scope='telco' AND key=$1", [route.telcoId]);
           if (!adapter) reason = "no adapter";
           else if (tk.rowCount) reason = "telco kill switch";

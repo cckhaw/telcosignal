@@ -24,6 +24,7 @@ import { startMockTelcoA, type MockTelco } from "../../mock/telco-a.js";
 import { startMockTelcoB } from "../../mock/telco-b.js";
 import { startMockAggregator } from "../../mock/aggregator.js";
 import { TelcoBAdapter } from "../../src/adapters/telcoB.js";
+import { AdapterRegistry } from "../../src/adapters/registry.js";
 import { Limiter, DEFAULT_LIMITS as DEFAULT_LIMITS_T, type LimitConfig } from "../../src/ratelimit/limits.js";
 import { AbuseDetector, DEFAULT_ABUSE as DEFAULT_ABUSE_T, type AbuseConfig } from "../../src/abuse/enumeration.js";
 import { ResilientAdapter, type ResilienceConfig, DEFAULT_RESILIENCE } from "../../src/resilience/breaker.js";
@@ -41,7 +42,7 @@ export interface TestClient { name: string; orgId: string; pem: Pem; key: Crypto
 export interface ReqOpts { body?: unknown; rawBody?: string; token?: string | null; sign?: boolean; signAs?: TestClient; iat?: number; jti?: string; headers?: Record<string, string>; agentOf?: TestClient; contentType?: string; tamperAfterSign?: string }
 export interface Harness {
   cfg: Config; app: FastifyInstance; port: number; pool: Pool; migrator: Pool; reporting: Pool; billing: Pool; store: EphemeralStore; kms: LocalKms; audit: Audit;
-  pki: TestPki; breakers: Map<string, ResilientAdapter>; telco: MockTelco; telcoB: MockTelco; aggregator: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string; billing: string };
+  pki: TestPki; registry: AdapterRegistry; platformOut: Pem; breakers: Map<string, ResilientAdapter>; telco: MockTelco; telcoB: MockTelco; aggregator: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string; billing: string; admin: string };
   orgA: string; orgB: string; orgC: string; bankA: TestClient; bankB: TestClient; bankC: TestClient; adminUrl: string; dbName: string;
   newClient(name: string, orgId: string, scopes: string[], o?: { pem?: Pem; registerCert?: string }): Promise<TestClient>;
   assertion(c: TestClient, o?: { aud?: string; exp?: number; iat?: number; jti?: string; alg?: string; iss?: string }): Promise<string>;
@@ -55,13 +56,13 @@ export const numB = (last: string, mid = "0001") => `+6099901${mid}${last}`;   /
 export const numC = (last: string, mid = "0001") => `+6099902${mid}${last}`;   // Telco C range (via aggregator)
 const b64 = (n: number) => randomBytes(n).toString("base64url");
 
-export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis; limits?: Partial<LimitConfig>; abuse?: Partial<AbuseConfig>; resilience?: Partial<ResilienceConfig> } = {}): Promise<Harness> {
+export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis; limits?: Partial<LimitConfig>; abuse?: Partial<AbuseConfig>; resilience?: Partial<ResilienceConfig>; useRegistry?: boolean } = {}): Promise<Harness> {
   if (!ADMIN_URL) throw new Error("TS_TEST_ADMIN_URL must point to a Postgres superuser URL for the test run");
   const work = mkdtempSync(join(tmpdir(), "ts-h-"));
   const dbName = `ts_t_${randomBytes(5).toString("hex")}`;
   execFileSync("node", ["scripts/db-setup.mjs", ADMIN_URL, dbName, join(work, "db.env")], { stdio: "pipe" });
   const env = Object.fromEntries(readFileSync(join(work, "db.env"), "utf8").trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
-  const urls = { migrator: env["TS_MIGRATOR_URL"]!, app: env["TS_DATABASE_URL"]!, reporting: env["TS_REPORTING_URL"]!, billing: env["TS_BILLING_URL"]! };
+  const urls = { migrator: env["TS_MIGRATOR_URL"]!, app: env["TS_DATABASE_URL"]!, reporting: env["TS_REPORTING_URL"]!, billing: env["TS_BILLING_URL"]!, admin: env["TS_ADMIN_DB_URL"]! };
   await migrate(urls.migrator, "migrations");
   const pool = makePool(urls.app), migrator = makePool(urls.migrator), reporting = makePool(urls.reporting), billing = makePool(urls.billing);
 
@@ -108,7 +109,8 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const limiter = new Limiter(store, pool, cfg.limits);
   const abuse = new AbuseDetector(store, pool, kms, audit, log, cfg.abuse);
   const breakers = new Map<string, ResilientAdapter>([...adapters].map(([id, a]) => [id, new ResilientAdapter(a, cfg.resilience)]));
-  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters: breakers, log, limiter, abuse, ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
+  const registry = new AdapterRegistry(pool, { mtls, timeoutMs: cfg.telcoTimeoutMs, resilience: cfg.resilience, envAllowList: cfg.telcoAllowList, ttlMs: 50, allowLoopback: true });
+  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters: opts.useRegistry ? registry : breakers, log, limiter, abuse, ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const port = (app.server.address() as { port: number }).port;
   cfg.tokenEndpoint = `https://localhost:${port}/oauth/token`;
@@ -123,6 +125,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     ('telco-b','SIM_SWAP'),('telco-b','CALL_FORWARDING'),
     ('telco-c','SIM_SWAP'),('telco-c','DEVICE_SWAP'),('telco-c','KYC_MATCH')`);
 
+  await migrator.query("INSERT INTO org_entitlement(org_id, signal, purposes) SELECT o, s.id, '{FRAUD_PREVENTION,ACCOUNT_TAKEOVER_CHECK,TRANSACTION_RISK}' FROM unnest($1::uuid[]) o CROSS JOIN signals s", [[orgA, orgB, orgC]]);
   const h = {} as Harness;
   const agents: Agent[] = [];
   h.newClient = async (name, orgId, scopes, o = {}) => {
@@ -178,10 +181,10 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     if (r.status !== 201) throw new Error(`consent create failed ${r.status}`);
     return { ref, id: r.json.id as string };
   };
-  Object.assign(h, { breakers, cfg, app, port, pool, migrator, reporting, billing, store, kms, audit, pki, telco, telcoB, aggregator, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
+  Object.assign(h, { registry, platformOut, breakers, cfg, app, port, pool, migrator, reporting, billing, store, kms, audit, pki, telco, telcoB, aggregator, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
   h.stop = async () => {
     await app.close(); await telco.close(); await telcoB.close(); await aggregator.close(); for (const a of agents) await a.close();
-    for (const ad of breakers.values()) await ad.close();
+    for (const ad of breakers.values()) await ad.close(); await registry.close();
     await pool.end(); await migrator.end(); await reporting.end(); await billing.end(); await store.close();
     const adm = new pg.Client({ connectionString: ADMIN_URL }); await adm.connect(); await adm.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`); await adm.end();
     rmSync(work, { recursive: true, force: true }); rmSync(pki.dir, { recursive: true, force: true });

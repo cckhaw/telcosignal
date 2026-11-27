@@ -17,7 +17,10 @@
     "sandbox:setup": "tsx scripts/sandbox-setup.ts .sandbox",
     "sandbox:mocks": "tsx mock/run-mocks.ts",
     "sandbox:start": "tsx src/main.ts",
-    "dast": "tsx tests/dast/run.ts .sandbox https://localhost:8443"
+    "dast": "tsx tests/dast/run.ts .sandbox https://localhost:8443",
+    "sandbox:admin": "tsx src/admin/main.ts",
+    "sandbox:idp": "tsx mock/run-idp.ts",
+    "dast:admin": "tsx tests/dast/admin.ts .sandbox"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

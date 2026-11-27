@@ -112,3 +112,13 @@ F1 participant→gateway→participant API; F2 token issuance (client creds); F3
 
 ## Status update after M3 (tests exist and pass in the sandbox)
 Implemented with tests: T-007 (limits), T-034 (timeouts, bulkhead, breaker), T-060 (limiter/replay store down fails closed), T-065 (append-only metering, immutable statements, reconciliation), AB-01 (enumeration: detection, uniform answers, alert, suspension), AB-05 (billing integrity: failures never charged; double-billing guard). New residual items: R-008 breaker state per process; R-009 fixed-window rate limits.
+
+## Status update after M4a (tests exist and pass in the sandbox)
+T-014, T-032 (admin side), T-036, T-040, T-041, T-042, T-043, T-044, T-045 (admin cannot edit audit/history), T-046 (show-once), T-047, T-049, T-050, AB-03, AB-10 now have passing tests (m4a-auth, m4a-approval, m4a-onboarding, m4a-isolation, DAST admin).
+New residual risks: R-010 telco conformance results are asserted by the platform process; R-011 the portal shares the number-hashing key; R-012 DNS answers for telco endpoints are not pinned; R-013 telco certificate pinning per connection not implemented; R-014 single-person safety actions (engage/revoke/suspend) by design.
+| R-010 | Telco conformance results are asserted by the portal process, not computed by the database | Platform + Security | Open |
+| R-011 | Number-hashing key shared with the admin process (token-signing keys are not) | Security | Open |
+| R-012 | No DNS pinning between endpoint validation and connection (rebinding) | Platform | Open |
+| R-013 | No per-telco certificate pinning/onboarding workflow | Integration | Open |
+| R-014 | Single-person safety actions (engage kill switch, revoke credential, suspend org) | Operations | Accepted by design, alerts in M4b |
+| R-015 | Admin rate-limit counters are in-process (not shared across admin instances) | Platform | Open |
