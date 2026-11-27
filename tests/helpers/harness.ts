@@ -60,7 +60,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   if (!ADMIN_URL) throw new Error("TS_TEST_ADMIN_URL must point to a Postgres superuser URL for the test run");
   const work = mkdtempSync(join(tmpdir(), "ts-h-"));
   const dbName = `ts_t_${randomBytes(5).toString("hex")}`;
-  execFileSync("node", ["scripts/db-setup.mjs", ADMIN_URL, dbName, join(work, "db.env")], { stdio: "pipe" });
+  execFileSync("node", ["scripts/db-setup.mjs", "-", dbName, join(work, "db.env")], { stdio: "pipe", env: { ...process.env, TS_DB_SETUP_ADMIN_URL: ADMIN_URL } });   // URL via env: argv appears in error messages
   const env = Object.fromEntries(readFileSync(join(work, "db.env"), "utf8").trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
   const urls = { migrator: env["TS_MIGRATOR_URL"]!, app: env["TS_DATABASE_URL"]!, reporting: env["TS_REPORTING_URL"]!, billing: env["TS_BILLING_URL"]!, admin: env["TS_ADMIN_DB_URL"]!, worker: env["TS_WORKER_URL"]! };
   await migrate(urls.migrator, "migrations");

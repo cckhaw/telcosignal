@@ -1,9 +1,12 @@
 // Superuser-run setup for LOCAL/CI/sandbox databases. Generates role passwords at setup time (never committed).
-// Usage: node scripts/db-setup.mjs <admin-url> <dbname> <out-env-file>
+// Usage: node scripts/db-setup.mjs <admin-url|-> <dbname> <out-env-file>
+// The admin URL contains a password. Pass "-" and put the URL in TS_DB_SETUP_ADMIN_URL so it never appears on a command line (error messages
+// and process listings include argv, which once carried a connection string into a CI artifact).
 import pg from "pg";
 import { randomBytes, createHmac } from "node:crypto";
 import { writeFileSync } from "node:fs";
-const [adminUrl, dbname, outFile] = process.argv.slice(2);
+const [adminArg, dbname, outFile] = process.argv.slice(2);
+const adminUrl = adminArg === "-" ? process.env.TS_DB_SETUP_ADMIN_URL : adminArg;
 if (!adminUrl || !/^[a-z0-9_]{1,40}$/.test(dbname ?? "")) throw new Error("usage: db-setup <admin-url> <dbname> [out]");
 // Role passwords are generated at setup. Roles are cluster-wide, so several databases created in ONE test run share
 // per-run derived passwords (TS_ROLE_PW_SEED, random per run); production-like setups leave it unset => fresh random passwords.

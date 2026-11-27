@@ -20,7 +20,7 @@ chmodSync(out, 0o700);
 const w = (rel: string, data: string) => { writeFileSync(join(out, rel), data, { mode: 0o600 }); return join(out, rel); };
 
 // ---- database + roles (passwords generated now) ----
-execFileSync("node", ["scripts/db-setup.mjs", adminUrl, "ts_sandbox", join(out, "db.env")], { stdio: "pipe" });
+execFileSync("node", ["scripts/db-setup.mjs", "-", "ts_sandbox", join(out, "db.env")], { stdio: "pipe", env: { ...process.env, TS_DB_SETUP_ADMIN_URL: adminUrl } });
 const dbEnv = Object.fromEntries(readFileSync(join(out, "db.env"), "utf8").trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)])) as Record<string, string>;
 await migrate(dbEnv["TS_MIGRATOR_URL"]!, "migrations");
 
