@@ -275,6 +275,8 @@ describe("KMS: key versions and rotation", () => {
     expect(e2.startsWith("v2.")).toBe(true);
     expect((await h.kms.decrypt("field-key", e1, "ctx-1")).toString()).toBe("secret-value");
     await expect(h.kms.decrypt("field-key", e2, "other-context")).rejects.toThrow();
+    const trunc = e2.split("."); trunc[3] = Buffer.from(trunc[3]!, "base64url").subarray(0, 4).toString("base64url");
+    await expect(h.kms.decrypt("field-key", trunc.join("."), "ctx-1")).rejects.toThrow();   // truncated GCM tag must be refused
     const parts = e2.split("."); parts[2] = Buffer.from("x").toString("base64url");
     await expect(h.kms.decrypt("field-key", parts.join("."), "ctx-1")).rejects.toThrow();
   });

@@ -41,7 +41,7 @@ export class LocalKms implements Kms {
   async encrypt(keyName: string, plaintext: Buffer, aad: string): Promise<string> {
     const v = this.ensure(keyName);
     const iv = randomBytes(12);
-    const c = createCipheriv("aes-256-gcm", this.key(keyName, v), iv);
+    const c = createCipheriv("aes-256-gcm", this.key(keyName, v), iv, { authTagLength: 16 });
     c.setAAD(Buffer.from(aad));
     const ct = Buffer.concat([c.update(plaintext), c.final()]);
     return `v${v}.${iv.toString("base64url")}.${ct.toString("base64url")}.${c.getAuthTag().toString("base64url")}`;
@@ -49,7 +49,7 @@ export class LocalKms implements Kms {
   async decrypt(keyName: string, envelope: string, aad: string): Promise<Buffer> {
     const [ver, iv, ct, tag] = envelope.split(".");
     if (!ver?.startsWith("v") || !iv || !ct || !tag) throw new Error("bad envelope");
-    const d = createDecipheriv("aes-256-gcm", this.key(keyName, Number(ver.slice(1))), Buffer.from(iv, "base64url"));
+    const d = createDecipheriv("aes-256-gcm", this.key(keyName, Number(ver.slice(1))), Buffer.from(iv, "base64url"), { authTagLength: 16 });
     d.setAAD(Buffer.from(aad));
     d.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]);
