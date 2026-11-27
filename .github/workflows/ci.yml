@@ -74,7 +74,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm test
+      - name: tests (unit, integration, security) against ephemeral Postgres + Redis
+        env:
+          TS_TEST_ADMIN_URL: postgres://postgres:ci-ephemeral-only@127.0.0.1:5432/postgres
+          TS_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+        run: npm test
       - run: npm run sbom
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: sbom, path: sbom.cdx.json }
