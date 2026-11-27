@@ -19,13 +19,19 @@ const q = (s) => admin.query(s);
 const ident = (s) => `"${s.replace(/"/g, '""')}"`;
 for (const [r, p] of Object.entries(roles)) {
   const exists = (await admin.query("select 1 from pg_roles where rolname=$1", [r])).rowCount;
-  const attrs = r === "ts_migrator" ? "LOGIN NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE" : "LOGIN NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE";
-  await q(`${exists ? "ALTER" : "CREATE"} ROLE ${ident(r)} ${attrs} PASSWORD '${p}'`);
+  // Attributes are stated only when the role is CREATED. Re-stating them with ALTER ROLE needs superuser even for NOSUPERUSER/NOBYPASSRLS
+  // (managed Postgres such as Neon refuses it), so an existing role only gets a new password, and its attributes are VERIFIED below.
+  await q(exists ? `ALTER ROLE ${ident(r)} PASSWORD '${p}'` : `CREATE ROLE ${ident(r)} LOGIN NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '${p}'`);
 }
+const bad = (await admin.query("select rolname, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolcanlogin from pg_roles where rolname = any($1) and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or not rolcanlogin)", [Object.keys(roles)])).rows;
+if (bad.length) throw new Error(`refusing to continue: platform roles with unexpected attributes: ${bad.map((b) => b.rolname).join(", ")}`);
 for (const [r, attrs] of [["ts_lookup", "NOLOGIN BYPASSRLS"], ["ts_audit", "NOLOGIN NOBYPASSRLS"], ["ts_switch", "NOLOGIN NOBYPASSRLS"], ["ts_config", "NOLOGIN NOBYPASSRLS"]]) {
   const exists = (await admin.query("select 1 from pg_roles where rolname=$1", [r])).rowCount;
   if (!exists) await q(`CREATE ROLE ${r} ${attrs}`);
 }
+const defs = (await admin.query("select rolname, rolsuper, rolbypassrls, rolcanlogin from pg_roles where rolname = any($1)", [["ts_lookup", "ts_audit", "ts_switch", "ts_config"]])).rows;
+const wrong = defs.filter((d) => d.rolsuper || d.rolcanlogin || d.rolbypassrls !== (d.rolname === "ts_lookup"));
+if (wrong.length || defs.length !== 4) throw new Error(`refusing to continue: definer roles with unexpected attributes: ${wrong.map((d) => d.rolname).join(", ") || "missing"}`);
 await q("GRANT ts_lookup, ts_audit, ts_switch, ts_config TO ts_migrator"); // lets the migrator hand ownership of definer functions to them
 await q(`DROP DATABASE IF EXISTS ${ident(dbname)} WITH (FORCE)`);
 await q(`CREATE DATABASE ${ident(dbname)} OWNER ts_migrator`);
