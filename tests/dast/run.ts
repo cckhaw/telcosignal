@@ -157,6 +157,24 @@ check("API4-resource-consumption", "burst of 150 requests triggers 429 (rate lim
 const limited = burst.find((x) => x.status === 429);
 check("API4-resource-consumption", "429 body is generic", !limited || (safeBody(limited) && Object.keys(JSON.parse(limited.text)).sort().join() === "code,correlationId,message,status"));
 
+await sleep(1300);
+// ---- M3: quotas, enumeration handling, statements ----
+const repeatNum = "+609990000077";
+const repeatCons = await send(a, "POST", "/v1/consents", { raw: JSON.stringify({ phoneNumber: repeatNum, consentRef: "DAST-REP-" + b64(6), purposeCode: "FRAUD_PREVENTION", signals: ["SIM_SWAP"], expiresAt: new Date(Date.now() + 3600e3).toISOString() }) });
+const repRef = (JSON.parse(repeatCons.text) as { consentRef?: string }).consentRef ?? "";
+const repeatCodes: number[] = [];
+for (let i = 0; i < 30; i++) { repeatCodes.push((await send(a, "POST", ROUTES[0]!, { token: tok, raw: JSON.stringify({ phoneNumber: repeatNum, consentRef: repRef, purposeCode: "FRAUD_PREVENTION" }) })).status); await sleep(20); }
+check("API4-resource-consumption", "repeated lookups of one subject are limited (429 appears, no 5xx)", repeatCodes.includes(429) && repeatCodes.every((c) => c < 500), repeatCodes.join(","));
+await sleep(1300);
+const sweep = new Set<string>();
+for (let i = 0; i < 25; i++) { const x = await send(b, "POST", ROUTES[0]!, { raw: JSON.stringify({ phoneNumber: `+6099900990${String(i).padStart(2, "0")}`, consentRef: "DAST-PROBE-0001", purposeCode: "FRAUD_PREVENTION" }) }); sweep.add(`${x.status}:${(JSON.parse(x.text) as { code?: string }).code}`); await sleep(25); }
+check("API9-enumeration", "sequential range probing without consent: uniform generic answers (no existence oracle), no 5xx", sweep.size === 1 && [...sweep][0] === "403:CONSENT_REQUIRED", [...sweep].join(","));
+await sleep(1300);
+const stl = await send(a, "GET", "/v1/statements", {});
+check("API1-BOLA", "statements list is scoped to the caller", stl.status === 200 && Array.isArray((JSON.parse(stl.text) as { statements?: unknown[] }).statements));
+const stx = await send(b, "GET", "/v1/statements/00000000-0000-4000-8000-000000000000", {});
+check("API1-BOLA", "unknown/foreign statement id is a generic 404", stx.status === 404 && safeBody(stx));
+
 const failed = results.filter((r) => !r.ok);
 writeFileSync(process.env["DAST_REPORT"] ?? "dast-report.json", JSON.stringify({ target, finished: new Date().toISOString(), total: results.length, failed: failed.length, results }, null, 1));
 console.log(`DAST: ${results.length - failed.length}/${results.length} checks passed`);
