@@ -10,6 +10,9 @@ import { TelcoCAdapter } from "./adapters/telcoC.js";
 import type { TelcoAdapter } from "./adapters/types.js";
 import { buildParticipantServer } from "./participant-api/server.js";
 import { SANDBOX_BANNER } from "./common/banner.js";
+import { Limiter } from "./ratelimit/limits.js";
+import { AbuseDetector } from "./abuse/enumeration.js";
+import { ResilientAdapter } from "./resilience/breaker.js";
 
 const log = makeLogger();
 const cfg = loadConfig();
@@ -26,7 +29,10 @@ for (const t of rows as Array<{ id: string; adapter: string; base_url: string }>
   else if (t.adapter === "proprietary") adapters.set(t.id, new TelcoBAdapter(t.id, t.base_url, cfg.telcoAllowList, cfg.telcoMtls, cfg.telcoTimeoutMs));
   else adapters.set(t.id, new TelcoCAdapter(t.id, t.id, t.base_url, cfg.telcoAllowList, cfg.telcoMtls, cfg.telcoTimeoutMs));
 }
-const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters, log, rateLimitRedis: store.redis });
+const limiter = new Limiter(store, pool, cfg.limits);
+const abuse = new AbuseDetector(store, pool, kms, audit, log, cfg.abuse);
+const resilient = new Map<string, TelcoAdapter>([...adapters].map(([id, a]) => [id, new ResilientAdapter(a, cfg.resilience)]));
+const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters: resilient, log, limiter, abuse, rateLimitRedis: store.redis });
 await app.listen({ port: cfg.participantPort, host: process.env["TS_BIND"] ?? "0.0.0.0" });
 log.info({ port: cfg.participantPort, telcos: [...adapters.keys()] }, SANDBOX_BANNER);
 

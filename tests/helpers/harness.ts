@@ -24,6 +24,9 @@ import { startMockTelcoA, type MockTelco } from "../../mock/telco-a.js";
 import { startMockTelcoB } from "../../mock/telco-b.js";
 import { startMockAggregator } from "../../mock/aggregator.js";
 import { TelcoBAdapter } from "../../src/adapters/telcoB.js";
+import { Limiter, DEFAULT_LIMITS as DEFAULT_LIMITS_T, type LimitConfig } from "../../src/ratelimit/limits.js";
+import { AbuseDetector, DEFAULT_ABUSE as DEFAULT_ABUSE_T, type AbuseConfig } from "../../src/abuse/enumeration.js";
+import { ResilientAdapter, type ResilienceConfig, DEFAULT_RESILIENCE } from "../../src/resilience/breaker.js";
 import { TelcoCAdapter } from "../../src/adapters/telcoC.js";
 import { TestPki, type Pem } from "./pki.js";
 
@@ -37,8 +40,8 @@ export type Json = any;
 export interface TestClient { name: string; orgId: string; pem: Pem; key: CryptoKey | Awaited<ReturnType<typeof generateKeyPair>>["privateKey"]; kid: string; thumb: string; agent: Agent }
 export interface ReqOpts { body?: unknown; rawBody?: string; token?: string | null; sign?: boolean; signAs?: TestClient; iat?: number; jti?: string; headers?: Record<string, string>; agentOf?: TestClient; contentType?: string; tamperAfterSign?: string }
 export interface Harness {
-  cfg: Config; app: FastifyInstance; port: number; pool: Pool; migrator: Pool; reporting: Pool; store: EphemeralStore; kms: LocalKms; audit: Audit;
-  pki: TestPki; telco: MockTelco; telcoB: MockTelco; aggregator: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string };
+  cfg: Config; app: FastifyInstance; port: number; pool: Pool; migrator: Pool; reporting: Pool; billing: Pool; store: EphemeralStore; kms: LocalKms; audit: Audit;
+  pki: TestPki; breakers: Map<string, ResilientAdapter>; telco: MockTelco; telcoB: MockTelco; aggregator: MockTelco; logs: string[]; auditSink: string; kmsDir: string; urls: { migrator: string; app: string; reporting: string; billing: string };
   orgA: string; orgB: string; orgC: string; bankA: TestClient; bankB: TestClient; bankC: TestClient; adminUrl: string; dbName: string;
   newClient(name: string, orgId: string, scopes: string[], o?: { pem?: Pem; registerCert?: string }): Promise<TestClient>;
   assertion(c: TestClient, o?: { aud?: string; exp?: number; iat?: number; jti?: string; alg?: string; iss?: string }): Promise<string>;
@@ -52,15 +55,15 @@ export const numB = (last: string, mid = "0001") => `+6099901${mid}${last}`;   /
 export const numC = (last: string, mid = "0001") => `+6099902${mid}${last}`;   // Telco C range (via aggregator)
 const b64 = (n: number) => randomBytes(n).toString("base64url");
 
-export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis } = {}): Promise<Harness> {
+export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutMs?: number; rps?: number; tokenRps?: number; rateLimitRedis?: Redis; limits?: Partial<LimitConfig>; abuse?: Partial<AbuseConfig>; resilience?: Partial<ResilienceConfig> } = {}): Promise<Harness> {
   if (!ADMIN_URL) throw new Error("TS_TEST_ADMIN_URL must point to a Postgres superuser URL for the test run");
   const work = mkdtempSync(join(tmpdir(), "ts-h-"));
   const dbName = `ts_t_${randomBytes(5).toString("hex")}`;
   execFileSync("node", ["scripts/db-setup.mjs", ADMIN_URL, dbName, join(work, "db.env")], { stdio: "pipe" });
   const env = Object.fromEntries(readFileSync(join(work, "db.env"), "utf8").trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
-  const urls = { migrator: env["TS_MIGRATOR_URL"]!, app: env["TS_DATABASE_URL"]!, reporting: env["TS_REPORTING_URL"]! };
+  const urls = { migrator: env["TS_MIGRATOR_URL"]!, app: env["TS_DATABASE_URL"]!, reporting: env["TS_REPORTING_URL"]!, billing: env["TS_BILLING_URL"]! };
   await migrate(urls.migrator, "migrations");
-  const pool = makePool(urls.app), migrator = makePool(urls.migrator), reporting = makePool(urls.reporting);
+  const pool = makePool(urls.app), migrator = makePool(urls.migrator), reporting = makePool(urls.reporting), billing = makePool(urls.billing);
 
   const pki = new TestPki();
   const server = pki.issue("platform-server", { server: true });
@@ -87,6 +90,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     issuer: "https://platform.test", audience: "telco-signal-api", tokenEndpoint: "https://localhost:0/oauth/token",
     kmsDir, auditSinkPath: auditSink, telcoAllowList: [telcoOrigin, `https://localhost:${telcoB.port}`, `https://localhost:${aggregator.port}`], telcoTimeoutMs: opts.telcoTimeoutMs ?? 700, requestSkewSeconds: 60,
     rateLimitPerSecond: opts.rps ?? 5000, tokenRateLimitPerSecond: opts.tokenRps ?? 5000,   // high by default so functional tests are not throttled
+    limits: DEFAULT_LIMITS_T, abuse: DEFAULT_ABUSE_T, resilience: DEFAULT_RESILIENCE,   // replaced just below with test values
   };
   const mtls = { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key };
   const bOrigin = `https://localhost:${telcoB.port}`, cOrigin = `https://localhost:${aggregator.port}`;
@@ -96,7 +100,15 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     ["telco-c", new TelcoCAdapter("telco-c", "telco-c", cOrigin, cfg.telcoAllowList, mtls, cfg.telcoTimeoutMs)],
   ]);
   const rlRedis = opts.rateLimitRedis ?? (store instanceof RedisStore ? store.redis : undefined);
-  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters, log, ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
+  // Functional tests run with effectively-unlimited quotas / no breaker unless a test opts in, so they exercise one control at a time.
+  const HUGE = 1_000_000;
+  cfg.limits = { perParticipantSignalPerMinute: HUGE, perTelcoPerSecond: HUGE, perSubjectPerHour: HUGE, ...opts.limits };
+  cfg.abuse = { windowSeconds: 600, distinctSubjects: HUGE, sameRangeSubjects: HUGE, consentFailures: HUGE, autoSuspend: false, ...opts.abuse };
+  cfg.resilience = { ...DEFAULT_RESILIENCE, minRequests: HUGE, ...opts.resilience };
+  const limiter = new Limiter(store, pool, cfg.limits);
+  const abuse = new AbuseDetector(store, pool, kms, audit, log, cfg.abuse);
+  const breakers = new Map<string, ResilientAdapter>([...adapters].map(([id, a]) => [id, new ResilientAdapter(a, cfg.resilience)]));
+  const app = await buildParticipantServer({ cfg, pool, store, kms, audit, adapters: breakers, log, limiter, abuse, ...(rlRedis ? { rateLimitRedis: rlRedis } : {}) });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const port = (app.server.address() as { port: number }).port;
   cfg.tokenEndpoint = `https://localhost:${port}/oauth/token`;
@@ -125,7 +137,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     agents.push(agent);
     return { name, orgId, pem, key: privateKey, kid, thumb, agent };
   };
-  const ALL = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "consent:write", "consent:read"];
+  const ALL = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "consent:write", "consent:read", "statements:read"];
   const bankA = await h.newClient("bank-a", orgA, ALL), bankB = await h.newClient("bank-b", orgB, ALL), bankC = await h.newClient("bank-c", orgC, ["consent:read"]);
 
   h.assertion = (c, o = {}) => {
@@ -166,11 +178,11 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     if (r.status !== 201) throw new Error(`consent create failed ${r.status}`);
     return { ref, id: r.json.id as string };
   };
-  Object.assign(h, { cfg, app, port, pool, migrator, reporting, store, kms, audit, pki, telco, telcoB, aggregator, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
+  Object.assign(h, { breakers, cfg, app, port, pool, migrator, reporting, billing, store, kms, audit, pki, telco, telcoB, aggregator, logs, auditSink, kmsDir, urls, orgA, orgB, orgC, bankA, bankB, bankC, adminUrl: ADMIN_URL, dbName });
   h.stop = async () => {
     await app.close(); await telco.close(); await telcoB.close(); await aggregator.close(); for (const a of agents) await a.close();
-    for (const ad of adapters.values()) await ad.close();
-    await pool.end(); await migrator.end(); await reporting.end(); await store.close();
+    for (const ad of breakers.values()) await ad.close();
+    await pool.end(); await migrator.end(); await reporting.end(); await billing.end(); await store.close();
     const adm = new pg.Client({ connectionString: ADMIN_URL }); await adm.connect(); await adm.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`); await adm.end();
     rmSync(work, { recursive: true, force: true }); rmSync(pki.dir, { recursive: true, force: true });
     void createPublicKey;

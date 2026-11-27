@@ -16,11 +16,13 @@ import { certThumbprint, issueAccessToken, verifyAccessToken, verifyClientAssert
 import { clientUsable, lookupClient, type ClientRec } from "../identity/clients.js";
 import { consentValid, createConsent, getConsent, revokeConsent, subjectHash } from "../consent/consent.js";
 import { routeNumber } from "../router/router.js";
+import type { Limiter } from "../ratelimit/limits.js";
+import type { AbuseDetector } from "../abuse/enumeration.js";
 import { KYC_FIELDS, UUID_RE, validateCallForwardingCheck, validateCreateConsent, validateDeviceSwapCheck, validateKycMatch, validateSimSwapCheck } from "./schemas.js";
 import type { KycInput } from "../adapters/types.js";
 import type { Signal } from "../consent/consent.js";
 
-export interface Deps { rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: Map<string, TelcoAdapter>; log: Logger }
+export interface Deps { limiter: Limiter; abuse: AbuseDetector; rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: Map<string, TelcoAdapter>; log: Logger }
 interface Ctx { client: ClientRec; thumb: string; scopes: string[]; correlationId: string }
 const TLS12_CIPHERS = "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
 
@@ -148,6 +150,22 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     return { id, revoked: true, correlationId: ctx.correlationId };
   });
 
+  // ---------- statements (participants see only their own; RLS enforces it) ----------
+  app.get("/v1/statements", async (req) => {
+    const ctx = await authenticate(req, "statements:read");
+    const r = await withOrgTx(d.pool, ctx.client.orgId, (tx) => tx.query("SELECT id, period_start, period_end, currency, usage_count, total_minor FROM statement ORDER BY period_start DESC LIMIT 100"));
+    return { statements: r.rows.map((x) => ({ id: x.id, periodStart: x.period_start, periodEnd: x.period_end, currency: x.currency, usageCount: x.usage_count, totalMinor: Number(x.total_minor) })), correlationId: ctx.correlationId };
+  });
+  app.get("/v1/statements/:id", async (req) => {
+    const ctx = await authenticate(req, "statements:read");
+    const id = (req.params as { id: string }).id;
+    if (!UUID_RE.test(id)) throw new ApiError("NOT_FOUND", "bad id");
+    const r = await withOrgTx(d.pool, ctx.client.orgId, (tx) => tx.query("SELECT id, period_start, period_end, currency, lines, usage_count, total_minor FROM statement WHERE id = $1", [id]));
+    const x = r.rows[0];
+    if (!x) throw new ApiError("NOT_FOUND", "no such statement for this organisation");   // same answer for another organisation's statement and a nonexistent one
+    return { id: x.id, periodStart: x.period_start, periodEnd: x.period_end, currency: x.currency, lines: x.lines, usageCount: x.usage_count, totalMinor: Number(x.total_minor), correlationId: ctx.correlationId };
+  });
+
   // ---------- signals (one hardened pipeline for every signal) ----------
   interface SignalDef { path: string; scope: string; signal: Signal; validate: (b: unknown) => boolean; maxAge: boolean }
   const SIGNAL_DEFS: SignalDef[] = [
@@ -178,8 +196,15 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
       const sg = await d.pool.query("SELECT enabled FROM signals WHERE id = $1", [def.signal]);
       const signalOn = sg.rows[0]?.enabled === true && !ks.rows.some((r) => r.scope === "signal");
 
+      // Hard quotas first (cheap, before any consent/DB/telco work). Exceeding one is a generic 429; fail closed if the limiter store is down.
       const hash = await subjectHash(d.kms, body.phoneNumber);
+      try {
+        await d.limiter.participantSignal(org, def.signal);
+        await d.limiter.subject(org, hash.toString("hex").slice(0, 32));
+      } catch (e) { if (e instanceof ApiError && e.code === "RATE_LIMITED") await meter("REJECTED", null, 0); throw e; }
       const consentOk = await withOrgTx(d.pool, org, (tx) => consentValid(tx, { consentRef: body.consentRef, subjectHash: hash, purpose: body.purposeCode, signal: def.signal }));
+      // Enumeration / bulk-lookup heuristics see every attempt, including ones without valid consent (probing).
+      await d.abuse.observe({ orgId: org, clientId: ctx.client.clientId, msisdn: body.phoneNumber, correlationId: ctx.correlationId, consentOk });
       if (!consentOk) { await meter("REJECTED", null, 0); throw new ApiError("CONSENT_REQUIRED", "consent missing, expired, revoked, wrong subject/purpose/signal"); }
 
       let status: "TRUE" | "FALSE" | "UNAVAILABLE" | "NOT_SUPPORTED" = "UNAVAILABLE", telcoId: string | null = null, telcoMs = 0, reason = "no route";
@@ -194,6 +219,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
           const tk = await d.pool.query("SELECT 1 FROM kill_switch WHERE enabled AND scope='telco' AND key=$1", [route.telcoId]);
           if (!adapter) reason = "no adapter";
           else if (tk.rowCount) reason = "telco kill switch";
+          else if (!(await d.limiter.telco(route.telcoId))) reason = "telco connection rate limit";
           else {
             const kyc: KycInput = {};
             if (def.signal === "KYC_MATCH") for (const f of KYC_FIELDS) { const v = (body as Record<string, unknown>)[f]; if (typeof v === "string") kyc[f] = v; }

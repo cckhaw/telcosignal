@@ -37,7 +37,7 @@ const o = (n: string) => `https://localhost:${n}`;
 await m.query("INSERT INTO telcos(id, adapter, base_url) VALUES ('telco-a','camara',$1),('telco-b','proprietary',$2),('telco-c','aggregator',$3)", [o(String(ports.a)), o(String(ports.b)), o(String(ports.c))]);
 await m.query("INSERT INTO route_prefix(prefix, telco_id) VALUES ('+6099900','telco-a'),('+6099901','telco-b'),('+6099902','telco-c')");
 await m.query(`INSERT INTO telco_signal_coverage(telco_id, signal) VALUES ('telco-a','SIM_SWAP'),('telco-a','DEVICE_SWAP'),('telco-a','CALL_FORWARDING'),('telco-a','KYC_MATCH'),('telco-b','SIM_SWAP'),('telco-b','CALL_FORWARDING'),('telco-c','SIM_SWAP'),('telco-c','DEVICE_SWAP'),('telco-c','KYC_MATCH')`);
-const SCOPES = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "consent:write", "consent:read"];
+const SCOPES = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "consent:write", "consent:read", "statements:read"];
 const participants: Array<Record<string, string>> = [];
 for (const name of ["sandbox-bank-a", "sandbox-bank-b"]) {
   const org = (await m.query("INSERT INTO organisations(name, kind, state) VALUES ($1,'bank','testing') RETURNING id", [`Synthetic ${name}`])).rows[0].id as string;
@@ -58,7 +58,7 @@ const env: Record<string, string> = {
   TS_TELCO_CA_FILE: ca, TS_TELCO_CLIENT_CERT_FILE: files.outCert, TS_TELCO_CLIENT_KEY_FILE: files.outKey,
   TS_ISSUER: "https://platform.sandbox.invalid", TS_TOKEN_ENDPOINT: `https://localhost:${port}/oauth/token`, TS_KMS_DIR: join(out, "kms"),
   TS_AUDIT_SINK: w("audit-sink.jsonl", ""), TS_TELCO_ALLOWLIST: [ports.a, ports.b, ports.c].map((p) => o(String(p))).join(","),
-  TS_RATE_LIMIT_RPS: process.env["TS_RATE_LIMIT_RPS"] ?? "100", TS_TOKEN_RATE_LIMIT_RPS: process.env["TS_TOKEN_RATE_LIMIT_RPS"] ?? "10",
+  TS_BILLING_URL: dbEnv["TS_BILLING_URL"]!, TS_RATE_LIMIT_RPS: process.env["TS_RATE_LIMIT_RPS"] ?? "100", TS_TOKEN_RATE_LIMIT_RPS: process.env["TS_TOKEN_RATE_LIMIT_RPS"] ?? "10",
   MOCK_CERT_FILE: files.telcoCert, MOCK_KEY_FILE: files.telcoKey, MOCK_CLIENT_CA_FILE: ca, MOCK_A_PORT: String(ports.a), MOCK_B_PORT: String(ports.b), MOCK_C_PORT: String(ports.c),
 };
 w("env", Object.entries(env).map(([k, v]) => `${k}=${v}`).join("\n") + "\n");
