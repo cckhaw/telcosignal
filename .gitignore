@@ -21,3 +21,4 @@ worker.log
 dump.rdb
 load*.json
 load*.log
+!docs/release/sbom.cdx.json
