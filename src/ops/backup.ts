@@ -5,7 +5,12 @@ import { promisify } from "node:util";
 import pg from "pg";
 const run = promisify(execFile);
 const env = (url: string) => { const u = new URL(url); return { ...process.env, PGPASSWORD: decodeURIComponent(u.password), PGHOST: u.hostname, PGPORT: u.port || "5432", PGUSER: decodeURIComponent(u.username) }; };
-const ident = (s: string) => { if (!/^[a-z0-9_]{1,63}$/.test(s)) throw new Error("bad database name"); return `"${s}"`; };
+const validName = (s: string) => { if (!/^[a-z0-9_]{1,63}$/.test(s)) throw new Error("bad database name"); return s; };
+/** Identifiers cannot be bound parameters. Instead of interpolating them into SQL text, let Postgres quote them (format('%I', ...)) from a BOUND parameter. */
+async function withIdentifier(c: pg.Client, template: string, id: string) {
+  const sql = (await c.query("SELECT format($1, $2::text) AS s", [template, id])).rows[0].s as string;
+  return c.query(sql);
+}
 
 export async function backupDatabase(superUrl: string, db: string, file: string): Promise<number> {
   const t0 = Date.now();
@@ -14,12 +19,13 @@ export async function backupDatabase(superUrl: string, db: string, file: string)
 }
 /** Restore into a NEW database (never over a live one). Ownership, grants, row-level security, triggers and policies are restored as dumped. */
 export async function restoreDatabase(superUrl: string, newDb: string, file: string): Promise<number> {
+  validName(newDb);
   const t0 = Date.now();
   const admin = new pg.Client({ connectionString: superUrl }); await admin.connect();
   try {
     const exists = await admin.query("SELECT 1 FROM pg_database WHERE datname=$1", [newDb]);
     if (exists.rowCount) throw new Error("refusing to restore over an existing database");
-    await admin.query(`CREATE DATABASE ${ident(newDb)}`);
+    await withIdentifier(admin, "CREATE DATABASE %I", validName(newDb));
   } finally { await admin.end(); }
   await run("pg_restore", ["--no-password", "--exit-on-error", "--dbname", newDb, file], { env: env(superUrl), timeout: 120_000 });
   return Date.now() - t0;
@@ -31,7 +37,7 @@ export async function fingerprint(url: string): Promise<Fingerprint> {
   try {
     const tn = (await c.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY 1")).rows.map((r) => r.tablename as string);
     const tables: Record<string, number> = {};
-    for (const t of tn) tables[t] = Number((await c.query(`SELECT count(*) n FROM ${ident(t)}`)).rows[0].n);
+    for (const t of tn) tables[t] = Number((await withIdentifier(c, "SELECT count(*) AS n FROM public.%I", t)).rows[0].n);
     return {
       tables,
       grants: (await c.query("SELECT grantee || ':' || table_name || ':' || privilege_type AS g FROM information_schema.role_table_grants WHERE table_schema='public' AND grantee LIKE 'ts\\_%' ORDER BY 1")).rows.map((r) => r.g as string),
