@@ -51,7 +51,7 @@ Onboarding states: draft → testing → pending_approval → active → suspend
 Per-telco circuit breaker (closed/open/half-open), timeout 2 s default, bulkheads (concurrency cap per telco), kill switches (participant/telco/signal) checked on every request from a versioned, cached config with short TTL and fail-closed default. Fault-injection hooks live only in the mock telcos.
 
 ## 7. Observability
-OpenTelemetry traces/metrics/logs; attributes allow-list (no MSISDN, no names); `correlation_id` propagated; SIEM-ready JSON events (ECS-like) for authn failures, replay, rate-limit, enumeration, config changes, kill switch. Alert rules in config with ack/escalation.
+OpenTelemetry **traces** (M5, `src/telemetry/otel.ts`): one root span per request plus one child span per measured step, created after the response is sent; attributes pass a fail-closed allow-list (no MSISDN, no names, no consent reference, no token) at creation and again at the exporter; off unless `TS_OTEL_EXPORTER=console`; no OTLP exporter is bundled (R-021). Metrics and logs go through the request log, rollups and the process log (pino, redacted) rather than OTel; `correlation_id` propagated; SIEM-ready JSON events (ECS-like) for authn failures, replay, rate-limit, enumeration, config changes, kill switch. Alert rules in config with ack/escalation.
 
 ## 8. Supply chain & runtime
 Lockfile + exact pins, `npm ci --ignore-scripts`, SBOM (CycloneDX), build provenance (GitHub artifact attestations / sigstore cosign for images), distroless/non-root image, read-only rootfs, `cap_drop: ALL`, `no-new-privileges`, segmented compose networks (`edge`, `core`, `data`, `telco`, `admin`), separate env files per environment.
@@ -86,3 +86,9 @@ The CAMARA definitions are pinned in `openapi/camara/PINS.md` (SimSwap r4.3, Dev
 * Authentication lookups use two narrow `SECURITY DEFINER` functions owned by a dedicated role (BYPASSRLS, read-only on 3 tables); the application role never reads other tenants.
 * `audit_append()` computes the hash chain inside the DB under an advisory lock; an external JSONL copy is written after commit; `verifyAuditChain` recomputes both.
 * Known gap carried to M2: DAST needs a runnable sandbox (`deploy/compose.sandbox.yml`, `src/main.ts`); tracked in the compliance matrix as not met.
+
+## 13. M5 notes
+* **Abuse and cost of refusing**: rate-limited (429) and oversized (413) requests are shed without an audit-chain write (they are counted in the security log and the request log); every other refusal is audited. Consent registration has its own per-organisation quota (`TS_LIMIT_CONSENT_PER_MIN`, default 120).
+* **AB-09 timing**: refusals and answers that involve no telco call are held to a minimum response time (`TS_MIN_RESPONSE_MS`, default 40 ms) so latency does not reveal which step refused or whether a number is routable. Rate-limit shedding is not delayed. The floor counts toward "platform overhead" for those requests only; answered signal requests are unaffected.
+* **Load**: `tests/load/run.ts` (open loop). Results and their limits: `docs/release/load-results.md`.
+* **Neon**: the owner has provisioned a Neon project and connected it to the Vercel project. The platform's database layer is verified against it by the manual `neon-verify` workflow (synthetic data only); the Vercel deployment itself does not use it (only the static developer portal is deployed).

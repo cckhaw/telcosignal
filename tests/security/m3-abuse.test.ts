@@ -66,9 +66,14 @@ describe("quotas and rate limits (participant x signal, subject, telco)", () => 
     const bad = { setNx: async () => true, incr: async () => { throw new Error("down"); }, addToSet: async () => 0, close: async () => undefined };
     const h = await startHarness({ store: bad });
     try {
-      const n = num("0", "0430"); const c = await h.consent(h.bankA, n).catch(() => null);
-      void c; // consent creation does not use the limiter; the signal call does
-      const cc = await h.consent(h.bankA, n);
+      const n = num("0", "0430");
+      // consent registration is quota-limited too (M5), so it also fails closed when the limiter store is down
+      await expect(h.consent(h.bankA, n)).rejects.toThrow(/503/);
+      // register the consent directly (as the application would have before the outage) to test the signal path
+      const { subjectHash, createConsent } = await import("../../src/consent/consent.js"); const { withOrgTx } = await import("../../src/db/pool.js");
+      const hash = await subjectHash(h.kms, n);
+      await withOrgTx(h.pool, h.orgA, (tx) => createConsent(tx, h.orgA, { consentRef: "OUTAGE-CONSENT-1", subjectHash: hash, purpose: "FRAUD_PREVENTION", signals: ["SIM_SWAP"], expiresAt: new Date(Date.now() + 3.6e6) }));
+      const cc = { ref: "OUTAGE-CONSENT-1" };
       const before = h.telco.calls;
       const r = await h.call(h.bankA, "POST", SIM, { body: body(n, cc.ref) });
       expect(r.status).toBe(503); expect(h.telco.calls).toBe(before);

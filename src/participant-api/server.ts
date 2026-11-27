@@ -22,8 +22,9 @@ import { classifyReason } from "../resilience/classify.js";
 import { KYC_FIELDS, UUID_RE, validateCallForwardingCheck, validateCreateConsent, validateDeviceSwapCheck, validateKycMatch, validateSimSwapCheck } from "./schemas.js";
 import type { KycInput } from "../adapters/types.js";
 import type { Signal } from "../consent/consent.js";
+import { NOOP_TELEMETRY, type Telemetry } from "../telemetry/otel.js";
 
-export interface Deps { limiter: Limiter; abuse: AbuseDetector; rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: AdapterSource; log: Logger }
+export interface Deps { limiter: Limiter; abuse: AbuseDetector; rateLimitRedis?: Redis; cfg: Config; pool: Pool; store: EphemeralStore; kms: Kms; audit: Audit; adapters: AdapterSource; log: Logger; telemetry?: Telemetry }
 interface Ctx { client: ClientRec; thumb: string; scopes: string[]; correlationId: string }
 const TLS12_CIPHERS = "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
 
@@ -67,6 +68,9 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     const lc = t.lc, status = reply.statusCode, total = Math.round(performance.now() - t.t0);
     const outcome = lc.outcome ?? (status >= 500 ? "ERROR" : status >= 400 ? "REJECTED" : "OK");
     const reason = (lc.reason ?? "").replace(/\+[0-9]{5,}/g, "[n]").slice(0, 200);
+    // OpenTelemetry: after the response, from timings already measured; only allow-listed attributes can leave the process (T-064).
+    (d.telemetry ?? NOOP_TELEMETRY).request({ startMs: t.t0, endMs: t.t0 + total, steps: t.steps, failed: status >= 500,
+      attrs: { correlation_id: String(req.id), "http.request.method": req.method, "http.route": route, "http.response.status_code": status, "ts.signal": lc.signal, "ts.outcome": outcome, "ts.error_code": lc.errorCode, "ts.telco_id": lc.telcoId, "ts.reason_class": lc.reasonClass ?? classifyReason(outcome, reason), "ts.total_ms": total, "ts.telco_ms": Math.round(lc.telcoMs ?? 0), "ts.overhead_ms": Math.max(0, total - Math.round(lc.telcoMs ?? 0)) } });
     const p = (async () => {
       try {
         await d.pool.query(
