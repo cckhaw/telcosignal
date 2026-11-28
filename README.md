@@ -1,4 +1,4 @@
-# PayNet Telco Signal API Platform — reference implementation (sandbox)
+# Telco Signal API Platform — reference implementation (sandbox)
 
 > **SANDBOX ONLY. SYNTHETIC DATA ONLY. NOT APPROVED FOR LIVE DATA.**
 > No certification, compliance or regulatory approval is claimed anywhere in this repository. The platform must not process real customer
