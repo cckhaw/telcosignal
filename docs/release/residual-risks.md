@@ -2,7 +2,7 @@
 
 Owners are **proposed**; nobody has accepted them. A risk is only "accepted" when its owner says so in writing (gate G8 in `human-gates.md`).
 Severity is my own qualitative judgement for a *live-data* deployment (H high, M medium, L low); none of these block the sandbox.
-R-001..R-020 were logged in earlier milestones (`threat-model.md`); R-021..R-025 are new in M5; R-026..R-028 are new in the M6 audit; R-029..R-032 are new in M7 (second-wave signals).
+R-001..R-020 were logged in earlier milestones (`threat-model.md`); R-021..R-025 are new in M5; R-026..R-028 are new in the M6 audit; R-029..R-032 are new in M7 (second-wave signals); R-033 is new in the M8 re-audit.
 
 | ID | Risk | Sev | Proposed owner | Status / next step |
 |---|---|---|---|---|
@@ -39,5 +39,6 @@ R-001..R-020 were logged in earlier milestones (`threat-model.md`); R-021..R-025
 | R-030 | Number Verification is not built; "does this person hold this SIM now" relies on SIM swap, device swap and call forwarding | M | Product | Open: design in `docs/design/number-verification.md`, decision D-008 |
 | R-031 | The four new signals have only been tested against mock telcos built from the pinned definitions; a real operator may differ (version, semantics of PARTIAL, tenure rules, recycling date granularity) | M | Telco Integration | Open: per-telco conformance and a pilot are needed; pins are pre-1.0 for tenure and recycling |
 | R-032 | The legal basis, consent wording and purpose limits for location, roaming, tenure and recycling are not assessed | H | Legal + Privacy | Open: questions listed in `docs/privacy/second-wave-signals.md`; gate G3 covers it |
+| R-033 | An entitlement can be granted for a signal that has no price in the organisation's price plan; the statement run then produces no statement for that organisation (fails closed, but blocks billing for all its signals) | L | Billing + Platform | Open: add a check at entitlement or plan-assignment time; see `docs/security/m8-audit.md` O-M8-1 |
 
 Branch protection (H-001) is an owner action tracked in `decisions-needed.md` and `human-gates.md` (G9), not a platform risk.

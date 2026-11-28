@@ -27,6 +27,7 @@ SBOM, residual-risk register with proposed owners, runbooks).
 | M5 | Adversarial review (OWASP API Top 10 2023 + every threat-model entry), fixes, OpenTelemetry, 200 rps load test, release package | [M5](docs/reports/M5.md) |
 | M6 | Security audit (static, manual, database, CI/CD) and black-box penetration test; 11 defects fixed with regression tests. Self-conducted: not a substitute for an independent test | [report](docs/security/audit-and-pentest-report.md) |
 | M7 | Second-wave signals: number recycling, KYC tenure, device location verification, device roaming (pinned CAMARA definitions, mock telcos only); Number Verification designed, not built | [M7](docs/reports/M7.md) |
+| M8 | Re-audit after M7: dependency, static and secret scans, live DAST and pen test (all clean), seeded fuzzing of the new endpoints (1 low defect fixed). Self-conducted, not independent | [report](docs/security/m8-audit.md) |
 
 What is **not** done is listed, with proposed owners, in [`docs/release/residual-risks.md`](docs/release/residual-risks.md). The largest items: hosting for the
 participant mTLS endpoint (Vercel cannot terminate client certificates), data residency of Neon in Singapore, a real KMS/HSM, WAF/DDoS, an

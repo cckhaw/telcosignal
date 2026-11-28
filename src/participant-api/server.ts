@@ -142,8 +142,10 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     if (!claims.scopes.includes(scope) || !client.scopes.includes(scope)) throw new ApiError("ACCESS_DENIED", `scope ${scope} not granted`);
     return { client, thumb, scopes: claims.scopes, correlationId: req.id as string };
   }
-  const parseBody = (raw: unknown): unknown => {
-    try { return JSON.parse((raw as Buffer).toString("utf8")); } catch { throw new ApiError("INVALID_REQUEST", "malformed json"); }
+  /** A POST without a body (or with an unparsed content type) has no Buffer: treat it as empty so every later step sees a Buffer and answers 400, never a 500. */
+  const bodyBuf = (req: FastifyRequest): Buffer => (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
+  const parseBody = (req: FastifyRequest): unknown => {
+    try { return JSON.parse(bodyBuf(req).toString("utf8")); } catch { throw new ApiError("INVALID_REQUEST", "malformed json"); }
   };
 
   // ---------- token endpoint (client credentials + private_key_jwt, mTLS-bound) ----------
@@ -173,8 +175,8 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
   // ---------- consent management ----------
   app.post("/v1/consents", async (req, reply) => {
     const ctx = await authenticate(req, "consent:write");
-    await verifyRequestSignature(d.pool, d.store, { jws: hdr(req, "x-request-signature"), clientId: ctx.client.clientId, thumb: ctx.thumb, method: "POST", path: "/v1/consents", rawBody: req.body as Buffer, skewSeconds: d.cfg.requestSkewSeconds });
-    const b = parseBody(req.body);
+    await verifyRequestSignature(d.pool, d.store, { jws: hdr(req, "x-request-signature"), clientId: ctx.client.clientId, thumb: ctx.thumb, method: "POST", path: "/v1/consents", rawBody: bodyBuf(req), skewSeconds: d.cfg.requestSkewSeconds });
+    const b = parseBody(req);
     if (!validateCreateConsent(b)) throw new ApiError("INVALID_REQUEST", "schema");
     const body = b as { phoneNumber: string; consentRef: string; purposeCode: string; signals: string[]; expiresAt: string };
     await d.limiter.consentCreate(ctx.client.orgId);
@@ -241,9 +243,9 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
     app.post(def.path, async (req, reply) => {
       const t0 = performance.now();
       const ctx = await authenticate(req, def.scope); trOf(req).lc.signal = def.signal; lap(req, "auth");
-      await verifyRequestSignature(d.pool, d.store, { jws: hdr(req, "x-request-signature"), clientId: ctx.client.clientId, thumb: ctx.thumb, method: "POST", path: def.path, rawBody: req.body as Buffer, skewSeconds: d.cfg.requestSkewSeconds });
+      await verifyRequestSignature(d.pool, d.store, { jws: hdr(req, "x-request-signature"), clientId: ctx.client.clientId, thumb: ctx.thumb, method: "POST", path: def.path, rawBody: bodyBuf(req), skewSeconds: d.cfg.requestSkewSeconds });
       lap(req, "signature");
-      const b = parseBody(req.body);
+      const b = parseBody(req);
       if (!def.validate(b)) throw new ApiError("INVALID_REQUEST", "schema");
       const sp = def.params ? def.params(b as Record<string, unknown>) : undefined;
       if (sp === null) throw new ApiError("INVALID_REQUEST", "schema");
