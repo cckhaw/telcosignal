@@ -42,10 +42,18 @@ step("database setup (roles + database) on Neon", probe.status === 0, probe.stat
 if (probe.status !== 0) finish(1);
 if (probe.status === 0) { const d = new pg.Client({ connectionString: pick }); await d.connect(); await d.query('DROP DATABASE IF EXISTS ts_t_probe_neon WITH (FORCE)'); await d.end(); }
 
-// 3. run the full test suite against Neon: each test file creates its own ts_t_* database and drops it afterwards
+// 3. run a representative subset of the suite against Neon (the database layer: roles, forced row-level security, audit chain, metering, tenant isolation).
+//    The full suite (21 files, each creating its own database over the WAN) did not finish inside 45 minutes, so the subset is time-boxed and progress is visible.
+const files = (process.env.NEON_TEST_FILES ?? "tests/security/m1-controls.test.ts tests/security/m3-metering.test.ts tests/security/m4a-isolation.test.ts").split(/\s+/).filter(Boolean);
+const dropLeftovers = async () => { const d = new pg.Client({ connectionString: pick }); await d.connect(); const dbs = (await d.query("select datname from pg_database where datname like 'ts\\_t\\_%'")).rows; for (const x of dbs) await d.query(`DROP DATABASE IF EXISTS "${x.datname}" WITH (FORCE)`).catch(() => undefined); await d.end(); return dbs.length; };
+step("removed leftover ts_t_* databases from earlier runs", true, String(await dropLeftovers()));
 const env = { ...process.env, TS_TEST_ADMIN_URL: pick, TS_TEST_REDIS_URL: process.env.TS_TEST_REDIS_URL ?? "redis://127.0.0.1:6379/15", NEON_CANDIDATES: "" };
-const r = spawnSync("npx", ["vitest", "run", "--reporter=json", "--outputFile=/tmp/neon-vitest.json"], { env, stdio: ["ignore", "ignore", "inherit"] });   // raw report stays on the runner (it can echo connection details); only the redacted summary below is kept
+const started = Date.now();
+const r = spawnSync("npx", ["vitest", "run", ...files, "--reporter=default", "--reporter=json", "--outputFile.json=/tmp/neon-vitest.json"], { env, stdio: ["ignore", "inherit", "inherit"], timeout: 20 * 60 * 1000, killSignal: "SIGTERM" });   // raw JSON stays on the runner (it can echo connection details)
+report.test_seconds = Math.round((Date.now() - started) / 1000);
 let summary = null;
-try { const j = JSON.parse((await import("node:fs")).readFileSync("/tmp/neon-vitest.json", "utf8")); summary = { files: j.numTotalTestSuites, tests: j.numTotalTests, passed: j.numPassedTests, failed: j.numFailedTests, failedNames: j.testResults.flatMap((f) => f.assertionResults.filter((a) => a.status === "failed").map((a) => redact(`${f.name.split("/").slice(-1)[0]}: ${a.title}`))) }; } catch { /* leave null */ }
-report.vitest = summary; step("full test suite against Neon", r.status === 0, summary ? `${summary.passed}/${summary.tests} passed` : `exit ${r.status}`);
+try { const j = JSON.parse((await import("node:fs")).readFileSync("/tmp/neon-vitest.json", "utf8")); summary = { files, tests: j.numTotalTests, passed: j.numPassedTests, failed: j.numFailedTests, failedNames: j.testResults.flatMap((f) => f.assertionResults.filter((a) => a.status === "failed").map((a) => redact(`${f.name.split("/").slice(-1)[0]}: ${a.title}`))) }; } catch { /* leave null */ }
+report.vitest = summary;
+step("cleanup: removed ts_t_* databases created by this run", true, String(await dropLeftovers()));
+step(`database-layer tests against Neon (${files.length} files, ${report.test_seconds}s${r.error ? ", " + r.error.code : ""})`, r.status === 0, summary ? `${summary.passed}/${summary.tests} passed` : `exit ${r.status}`);
 finish(r.status === 0 ? 0 : 1);
