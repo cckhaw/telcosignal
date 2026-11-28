@@ -73,7 +73,7 @@ Decision: Vercel Production hosts **only the static developer portal/docs** (pub
 | Audit external copy | TBD | Must be in approved jurisdiction |
 
 ## 11. Participant API vs pinned CAMARA definitions (deliberate deviations)
-The CAMARA definitions are pinned in `openapi/camara/PINS.md` (SimSwap r4.3, DeviceSwap r4.3, CallForwardingSignal r4.3, KnowYourCustomer r2.2). Telco A (mock) implements `sim-swap check` as published. The **participant-facing** API differs on purpose, because of the signal-safety and privacy rules:
+The CAMARA definitions are pinned in `openapi/camara/PINS.md` (SimSwap r4.3, DeviceSwap r4.3, CallForwardingSignal r4.3, KnowYourCustomer r2.2, and for the second-wave signals NumberRecycling r3.3, Tenure r3.4, DeviceLocation r4.3 location-verification, DeviceStatus r2.2 device-roaming-status). Telco A (mock) implements `sim-swap check` as published. The **participant-facing** API differs on purpose, because of the signal-safety and privacy rules:
 | CAMARA behaviour | Platform behaviour | Reason |
 |---|---|---|
 | `swapped: boolean` | `result: TRUE \| FALSE \| UNAVAILABLE \| NOT_SUPPORTED` | A timeout/error must never read as "no swap". |
@@ -92,3 +92,15 @@ The CAMARA definitions are pinned in `openapi/camara/PINS.md` (SimSwap r4.3, Dev
 * **AB-09 timing**: refusals and answers that involve no telco call are held to a minimum response time (`TS_MIN_RESPONSE_MS`, default 40 ms) so latency does not reveal which step refused or whether a number is routable. Rate-limit shedding is not delayed. The floor counts toward "platform overhead" for those requests only; answered signal requests are unaffected.
 * **Load**: `tests/load/run.ts` (open loop). Results and their limits: `docs/release/load-results.md`.
 * **Neon**: the owner has provisioned a Neon project and connected it to the Vercel project. The platform's database layer is verified against it by the manual `neon-verify` workflow (synthetic data only); the Vercel deployment itself does not use it (only the static developer portal is deployed).
+
+## 14. M7: second-wave signals
+
+Four signals were added through the **same** pipeline and no new route logic: `NUMBER_RECYCLING`, `KYC_TENURE`, `DEVICE_LOCATION`, `DEVICE_ROAMING`
+(`SIGNAL_DEFS` in `src/participant-api/server.ts`). What is new:
+
+* **Parameters**: each signal has its own strict JSON schema (`schemas.ts`); a `params` builder turns the validated body into `AdapterRequest.params`. Dates are checked for being real, not in the future and within a cap; tenure is given as days and converted to the date CAMARA expects at the adapter.
+* **Coverage**: telco A (CAMARA) covers all four; telco C (aggregator) covers recycling and tenure; telco B (proprietary) covers none, so it answers `NOT_SUPPORTED`. Migration `006` registers the signals but adds no coverage: coverage is a two-person change.
+* **Location** is sensitive: radius floor 2,000 m (`MIN_RADIUS_M`), a separate per-subject hourly cap (`perSubjectLocationPerHour`, default 4), consent that names the signal, nothing stored or logged, and a CAMARA `PARTIAL` is `UNAVAILABLE`.
+* **Roaming** returns one boolean; the country the telco sends is discarded in the adapter.
+* **Number Verification** is deliberately not part of this plane: `docs/design/number-verification.md`.
+* Conformance and the admin test console use `src/adapters/params.ts` (`syntheticParams`, `conformanceDigits`) so onboarding a telco proves each signal it claims.

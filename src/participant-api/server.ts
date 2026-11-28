@@ -19,8 +19,8 @@ import { routeNumber } from "../router/router.js";
 import type { Limiter } from "../ratelimit/limits.js";
 import type { AbuseDetector } from "../abuse/enumeration.js";
 import { classifyReason } from "../resilience/classify.js";
-import { KYC_FIELDS, UUID_RE, validateCallForwardingCheck, validateCreateConsent, validateDeviceSwapCheck, validateKycMatch, validateSimSwapCheck } from "./schemas.js";
-import type { KycInput } from "../adapters/types.js";
+import { KYC_FIELDS, MAX_RECYCLING_LOOKBACK_DAYS, UUID_RE, validPastDate, validateCallForwardingCheck, validateCreateConsent, validateDeviceLocation, validateDeviceRoaming, validateDeviceSwapCheck, validateKycMatch, validateKycTenure, validateNumberRecycling, validateSimSwapCheck } from "./schemas.js";
+import type { KycInput, SignalParams } from "../adapters/types.js";
 import type { Signal } from "../consent/consent.js";
 import { NOOP_TELEMETRY, type Telemetry } from "../telemetry/otel.js";
 
@@ -223,12 +223,19 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
   });
 
   // ---------- signals (one hardened pipeline for every signal) ----------
-  interface SignalDef { path: string; scope: string; signal: Signal; validate: (b: unknown) => boolean; maxAge: boolean }
+  interface SignalDef { path: string; scope: string; signal: Signal; validate: (b: unknown) => boolean; maxAge: boolean; params?: (b: Record<string, unknown>) => SignalParams | null }
   const SIGNAL_DEFS: SignalDef[] = [
     { path: "/v1/signals/sim-swap/check", scope: "sim-swap:check", signal: "SIM_SWAP", validate: validateSimSwapCheck, maxAge: true },
     { path: "/v1/signals/device-swap/check", scope: "device-swap:check", signal: "DEVICE_SWAP", validate: validateDeviceSwapCheck, maxAge: true },
     { path: "/v1/signals/call-forwarding/check", scope: "call-forwarding:check", signal: "CALL_FORWARDING", validate: validateCallForwardingCheck, maxAge: false },
     { path: "/v1/signals/kyc-match/check", scope: "kyc-match:check", signal: "KYC_MATCH", validate: validateKycMatch, maxAge: false },
+    // Second-wave signals. `params` turns the validated body into adapter parameters and returns null for semantically invalid values (400, same as a schema failure).
+    { path: "/v1/signals/number-recycling/check", scope: "number-recycling:check", signal: "NUMBER_RECYCLING", validate: validateNumberRecycling, maxAge: false,
+      params: (b) => validPastDate(String(b["specifiedDate"]), MAX_RECYCLING_LOOKBACK_DAYS) ? { specifiedDate: String(b["specifiedDate"]) } : null },
+    { path: "/v1/signals/kyc-tenure/check", scope: "kyc-tenure:check", signal: "KYC_TENURE", validate: validateKycTenure, maxAge: false, params: (b) => ({ minTenureDays: Number(b["minTenureDays"]) }) },
+    { path: "/v1/signals/device-location/check", scope: "device-location:check", signal: "DEVICE_LOCATION", validate: validateDeviceLocation, maxAge: false,
+      params: (b) => ({ area: { latitude: Number(b["latitude"]), longitude: Number(b["longitude"]), radiusMeters: Number(b["radiusMeters"]) }, ...(typeof b["maxAgeSeconds"] === "number" ? { maxAgeSeconds: b["maxAgeSeconds"] } : {}) }) },
+    { path: "/v1/signals/device-roaming/check", scope: "device-roaming:check", signal: "DEVICE_ROAMING", validate: validateDeviceRoaming, maxAge: false },
   ];
   for (const def of SIGNAL_DEFS) {
     app.post(def.path, async (req, reply) => {
@@ -238,6 +245,8 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
       lap(req, "signature");
       const b = parseBody(req.body);
       if (!def.validate(b)) throw new ApiError("INVALID_REQUEST", "schema");
+      const sp = def.params ? def.params(b as Record<string, unknown>) : undefined;
+      if (sp === null) throw new ApiError("INVALID_REQUEST", "schema");
       lap(req, "validate");
       const body = b as { phoneNumber: string; maxAge?: number; purposeCode: string; consentRef: string } & KycInput;
       const org = ctx.client.orgId;
@@ -263,6 +272,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
       try {
         await d.limiter.participantSignal(org, def.signal);
         await d.limiter.subject(org, hash.toString("hex").slice(0, 32));
+        if (def.signal === "DEVICE_LOCATION") await d.limiter.locationSubject(org, hash.toString("hex").slice(0, 32));    // stops triangulation by repeated probes
       } catch (e) { if (e instanceof ApiError && e.code === "RATE_LIMITED") await meter("REJECTED", null, 0, "limit"); throw e; }
       lap(req, "limits");
       const consentOk = await withOrgTx(d.pool, org, (tx) => consentValid(tx, { consentRef: body.consentRef, subjectHash: hash, purpose: body.purposeCode, signal: def.signal }));
@@ -287,7 +297,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
           else {
             const kyc: KycInput = {};
             if (def.signal === "KYC_MATCH") for (const f of KYC_FIELDS) { const v = (body as Record<string, unknown>)[f]; if (typeof v === "string") kyc[f] = v; }
-            const r = await adapter.call({ signal: def.signal, msisdn: body.phoneNumber, ...(def.maxAge && body.maxAge !== undefined ? { maxAgeHours: body.maxAge } : {}), ...(def.signal === "KYC_MATCH" ? { kyc } : {}), correlationId: ctx.correlationId });
+            const r = await adapter.call({ signal: def.signal, msisdn: body.phoneNumber, ...(def.maxAge && body.maxAge !== undefined ? { maxAgeHours: body.maxAge } : {}), ...(def.signal === "KYC_MATCH" ? { kyc } : {}), ...(sp ? { params: sp } : {}), correlationId: ctx.correlationId });
             status = r.status; telcoMs = r.telcoMs; reason = r.reason; fields = r.fields; lap(req, "adapter");
           }
         }

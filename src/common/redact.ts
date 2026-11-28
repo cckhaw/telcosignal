@@ -11,4 +11,6 @@ export const LOG_REDACT_PATHS = [
   "*.phoneNumber", "*.msisdn", "*.client_assertion", "*.access_token", "*.password", "*.secret",
   "phoneNumber", "msisdn", "client_assertion", "access_token",
   "idDocument", "name", "givenName", "familyName", "address", "birthdate", "email", "postalCode", "country", "kyc", "*.kyc",
+  // second-wave signals: location and dates are personal data about the subject
+  "latitude", "longitude", "radiusMeters", "specifiedDate", "minTenureDays", "area", "params", "*.params", "*.area",
 ];

@@ -7,7 +7,7 @@ Target (brief): about **200 requests/second**, **p95 platform overhead < 100 ms*
 `tests/load/run.ts` (`npm run load`): an **open-loop** generator. Requests are issued on a fixed schedule whatever the earlier ones are doing and
 latency is measured from the *scheduled* send time, so queueing cannot hide (no coordinated omission). Every request is a real mTLS request with a
 bearer token bound to the client certificate and an ES256-signed request; subjects are random synthetic numbers (not a sequential scan), each with
-its own registered consent; the four signals are spread over the telcos that cover them. Server-side figures come from the platform's own request
+its own registered consent; the original four signals (the second-wave signals were not load-tested) are spread over the telcos that cover them. Server-side figures come from the platform's own request
 log (`total_ms − telco_ms`), written after the response.
 
 Controls on during the run: mutual TLS, token verification, request signature and Redis replay check, scope and entitlement, per-participant /

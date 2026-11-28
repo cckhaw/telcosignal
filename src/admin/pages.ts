@@ -5,6 +5,7 @@ import { field, form, h, select, table, type Raw } from "./ui.js";
 import { jsonDiff } from "./diff.js";
 import { buildChange, InputError } from "./payloads.js";
 import { SIGNALS } from "../consent/consent.js";
+import { conformanceDigits, syntheticParams } from "../adapters/params.js";
 
 type Route = (m: "GET" | "POST", path: string, roles: readonly string[], fn: (c: RouteCtx) => Promise<unknown>) => void;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -109,9 +110,9 @@ export function registerPages(d: AdminDeps, route: Route) {
     for (const signal of t.sg) {
       let ok = false; const evidence: Record<string, unknown> = { signal };
       if (adapter) {
-        const kyc = signal === "KYC_MATCH" ? { name: "Synthetic Person" } : undefined;
-        const pos = await adapter.call({ signal: signal as (typeof SIGNALS)[number], msisdn: `${base}${signal === "KYC_MATCH" ? "0" : "1"}`, ...(kyc ? { kyc } : {}), correlationId: "conformance" });
-        const neg = await adapter.call({ signal: signal as (typeof SIGNALS)[number], msisdn: `${base}${signal === "KYC_MATCH" ? "1" : "0"}`, ...(kyc ? { kyc } : {}), correlationId: "conformance" });
+        const sp = syntheticParams(signal as (typeof SIGNALS)[number]), dg = conformanceDigits(signal as (typeof SIGNALS)[number]);
+        const pos = await adapter.call({ signal: signal as (typeof SIGNALS)[number], msisdn: `${base}${dg.positive}`, ...sp, correlationId: "conformance" });
+        const neg = await adapter.call({ signal: signal as (typeof SIGNALS)[number], msisdn: `${base}${dg.negative}`, ...sp, correlationId: "conformance" });
         ok = pos.status === "TRUE" && neg.status === "FALSE";      // UNAVAILABLE or anything unexpected is a failure
         evidence["positive"] = pos.status; evidence["negative"] = neg.status;
         if (signal === t.sg[0]) { const hc = pos.status !== "UNAVAILABLE" && neg.status !== "UNAVAILABLE"; out["health_check"] = hc; await record("health_check", hc, { positive: pos.status, negative: neg.status }); }
@@ -280,7 +281,7 @@ export function registerPages(d: AdminDeps, route: Route) {
     if (!(SIGNALS as readonly string[]).includes(signal) || !/^[a-z0-9-]{1,30}$/.test(telcoId)) return bad(c, new InputError("invalid telco or signal"));
     if (!d.registry) throw new HttpError(409, "Test console is not available on this instance.");
     const a = await d.registry.getForTest(telcoId);
-    const r = a ? await a.call({ signal: signal as (typeof SIGNALS)[number], msisdn: n, correlationId: "console", ...(signal === "KYC_MATCH" ? { kyc: { name: "Synthetic Person" } } : {}) }) : { status: "UNAVAILABLE", reason: "no adapter", telcoMs: 0 };
+    const r = a ? await a.call({ signal: signal as (typeof SIGNALS)[number], msisdn: n, correlationId: "console", ...syntheticParams(signal as (typeof SIGNALS)[number]) }) : { status: "UNAVAILABLE", reason: "no adapter", telcoMs: 0 };
     await c.audit("admin.console.test", r.status, undefined, { telco: telcoId, signal, ms: r.telcoMs });
     return c.html("Test console result", h`<p>Result: <b>${r.status}</b> (${r.reason}, ${r.telcoMs} ms)</p><p><a href="/integration">Back</a></p>`);
   });

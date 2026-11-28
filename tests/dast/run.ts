@@ -54,7 +54,7 @@ async function send(p: P, method: string, path: string, o: { token?: string | nu
 }
 const LEAK = /(at\s+[\w.<>]+\s+\(.*:\d+:\d+\)|node_modules|\.ts:\d+|postgres|ECONN|fastify|undici|stack|syntax error|SELECT |pg_)/i;
 const safeBody = (r: Resp) => !LEAK.test(r.text);
-const ROUTES = ["/v1/signals/sim-swap/check", "/v1/signals/device-swap/check", "/v1/signals/call-forwarding/check", "/v1/signals/kyc-match/check", "/v1/consents"];
+const ROUTES = ["/v1/signals/sim-swap/check", "/v1/signals/device-swap/check", "/v1/signals/call-forwarding/check", "/v1/signals/kyc-match/check", "/v1/signals/number-recycling/check", "/v1/signals/kyc-tenure/check", "/v1/signals/device-location/check", "/v1/signals/device-roaming/check", "/v1/consents"];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Attack fixture built at runtime (policy: no secret-shaped literals in the repo, so the secret scanner needs no allow-list).

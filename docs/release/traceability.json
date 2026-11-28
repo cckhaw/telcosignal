@@ -554,6 +554,40 @@
     "tests/security/m4a-onboarding.test.ts",
     "SSRF-prone URLs are refused"
    ]
+  ],
+  "AB-11": [
+   [
+    "tests/security/m7-second-wave.test.ts",
+    "repeat location checks of one subject are limited"
+   ],
+   [
+    "tests/security/m7-second-wave.test.ts",
+    "coordinates, radius and dates are never in logs"
+   ]
+  ],
+  "AB-12": [
+   [
+    "tests/security/m7-second-wave.test.ts",
+    "the country the telco returns never reaches the participant"
+   ],
+   [
+    "tests/security/m7-second-wave.test.ts",
+    "a consent that lists other signals does not cover a new one"
+   ],
+   [
+    "tests/security/m7-second-wave.test.ts",
+    "without an entitlement for the signal"
+   ]
+  ],
+  "AB-13": [
+   [
+    "tests/security/m7-second-wave.test.ts",
+    "a PARTIAL overlap is UNAVAILABLE"
+   ],
+   [
+    "tests/security/m7-second-wave.test.ts",
+    "errors, malformed, wrong types and extra fields are UNAVAILABLE"
+   ]
   ]
  }
 }

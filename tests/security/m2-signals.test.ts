@@ -12,7 +12,7 @@ beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h.stop(); });
 
 const base = (n: string, ref: string) => ({ phoneNumber: n, consentRef: ref, purposeCode: "FRAUD_PREVENTION" });
-const SIG_PATH = { SIM_SWAP: "sim-swap", DEVICE_SWAP: "device-swap", CALL_FORWARDING: "call-forwarding", KYC_MATCH: "kyc-match" } as const;
+const SIG_PATH = { SIM_SWAP: "sim-swap", DEVICE_SWAP: "device-swap", CALL_FORWARDING: "call-forwarding", KYC_MATCH: "kyc-match", NUMBER_RECYCLING: "number-recycling", KYC_TENURE: "kyc-tenure", DEVICE_LOCATION: "device-location", DEVICE_ROAMING: "device-roaming" } as const;
 async function ask(signal: keyof typeof SIG_PATH, n: string, extra: Record<string, unknown> = {}, c = h.bankA): Promise<{ status: number; json: Json }> {
   const consent = await h.consent(c, n);
   return h.call(c, "POST", `/v1/signals/${SIG_PATH[signal]}/check`, { body: { ...base(n, consent.ref), ...extra } });
@@ -205,10 +205,10 @@ describe("outbound controls: allow-list, TLS pinning, spec conformance", () => {
     } finally { await m.close(); }
   });
   it("adapter paths match the vendored, pinned CAMARA definitions (server base + operation)", () => {
-    const files: Record<string, string> = { SIM_SWAP: "sim-swap", DEVICE_SWAP: "device-swap", CALL_FORWARDING: "call-forwarding-signal", KYC_MATCH: "kyc-match" };
+    const files: Record<string, string> = { SIM_SWAP: "sim-swap", DEVICE_SWAP: "device-swap", CALL_FORWARDING: "call-forwarding-signal", KYC_MATCH: "kyc-match", NUMBER_RECYCLING: "number-recycling", KYC_TENURE: "kyc-tenure", DEVICE_LOCATION: "location-verification", DEVICE_ROAMING: "device-roaming-status" };
     for (const [sig, file] of Object.entries(files)) {
       const y = readFileSync(`openapi/camara/${file}.yaml`, "utf8");
-      const serverBase = /- url: '\{apiRoot\}(\/[^']+)'/.exec(y)?.[1];
+      const serverBase = /- url: ["']?\{apiRoot\}(\/[^"'\s]+)["']?$/m.exec(y)?.[1];
       const full = CAMARA_PATHS[sig as keyof typeof CAMARA_PATHS];
       expect(serverBase, file).toBeTruthy();
       expect(full.startsWith(serverBase!), `${sig} ${full} vs ${serverBase}`).toBe(true);

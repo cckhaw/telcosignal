@@ -6,6 +6,7 @@ import type { AdapterRequest, AdapterResult, FieldMatch, TelcoAdapter } from "./
 import type { Signal } from "../consent/consent.js";
 import { OutboundClient, type MtlsOptions } from "./outbound.js";
 import { kycResult } from "./telcoA.js";
+import { dateDaysAgo } from "./params.js";
 
 const ajv = new Ajv({ strict: true, allErrors: false });
 const MR = { enum: ["true", "false", "not_available"] };
@@ -16,9 +17,9 @@ const vResp = ajv.compile({
     result: { type: "object", additionalProperties: false, properties: { value: { type: "boolean" }, fields: { type: "object", additionalProperties: MR, maxProperties: 12 } } },
   },
 });
-const SIGNAL_NAME: Partial<Record<Signal, string>> = { SIM_SWAP: "SIM_SWAP", DEVICE_SWAP: "DEVICE_SWAP", KYC_MATCH: "KYC_MATCH" };
+const SIGNAL_NAME: Partial<Record<Signal, string>> = { SIM_SWAP: "SIM_SWAP", DEVICE_SWAP: "DEVICE_SWAP", KYC_MATCH: "KYC_MATCH", NUMBER_RECYCLING: "NUMBER_RECYCLING", KYC_TENURE: "KYC_TENURE" };   // location and roaming are not offered through the aggregator
 export class TelcoCAdapter implements TelcoAdapter {
-  readonly supports = new Set<Signal>(["SIM_SWAP", "DEVICE_SWAP", "KYC_MATCH"]);
+  readonly supports = new Set<Signal>(["SIM_SWAP", "DEVICE_SWAP", "KYC_MATCH", "NUMBER_RECYCLING", "KYC_TENURE"]);
   private out: OutboundClient;
   constructor(readonly telcoId: string, private readonly carrier: string, aggregatorUrl: string, allowList: string[], mtls: MtlsOptions, timeoutMs = 2000) {
     this.out = new OutboundClient(aggregatorUrl, allowList, mtls, timeoutMs, 2048);
@@ -29,7 +30,7 @@ export class TelcoCAdapter implements TelcoAdapter {
     const sig = SIGNAL_NAME[r.signal];
     if (!sig) return done("NOT_SUPPORTED", "signal not covered");
     const requestId = randomUUID();
-    const f = await this.out.post("/agg/v1/query", JSON.stringify({ requestId, carrier: this.carrier, signal: sig, msisdn: r.msisdn, params: { maxAge: r.maxAgeHours ?? 240, ...(r.kyc ?? {}) } }),
+    const f = await this.out.post("/agg/v1/query", JSON.stringify({ requestId, carrier: this.carrier, signal: sig, msisdn: r.msisdn, params: { maxAge: r.maxAgeHours ?? 240, ...(r.kyc ?? {}), ...(r.params?.specifiedDate ? { specifiedDate: r.params.specifiedDate } : {}), ...(r.params?.minTenureDays ? { tenureDate: dateDaysAgo(r.params.minTenureDays) } : {}) } }),
       { "content-type": "application/json", accept: "application/json" }, /^application\/json/);
     if (!f.ok) return done("UNAVAILABLE", f.reason);
     let p: unknown;

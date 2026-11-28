@@ -2,7 +2,7 @@ import type { Tx } from "../db/pool.js";
 import type { Kms } from "../kms/types.js";
 
 export const PURPOSES = ["FRAUD_PREVENTION", "ACCOUNT_TAKEOVER_CHECK", "TRANSACTION_RISK"] as const;
-export const SIGNALS = ["SIM_SWAP", "DEVICE_SWAP", "CALL_FORWARDING", "KYC_MATCH"] as const;
+export const SIGNALS = ["SIM_SWAP", "DEVICE_SWAP", "CALL_FORWARDING", "KYC_MATCH", "NUMBER_RECYCLING", "KYC_TENURE", "DEVICE_LOCATION", "DEVICE_ROAMING"] as const;
 export type Signal = (typeof SIGNALS)[number];
 
 export async function subjectHash(kms: Kms, msisdn: string): Promise<Buffer> {
