@@ -103,7 +103,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const rlRedis = opts.rateLimitRedis ?? (store instanceof RedisStore ? store.redis : undefined);
   // Functional tests run with effectively-unlimited quotas / no breaker unless a test opts in, so they exercise one control at a time.
   const HUGE = 1_000_000;
-  cfg.limits = { perParticipantSignalPerMinute: HUGE, perTelcoPerSecond: HUGE, perSubjectPerHour: HUGE, perParticipantConsentPerMinute: HUGE, ...opts.limits };
+  cfg.limits = { perParticipantSignalPerMinute: HUGE, perTelcoPerSecond: HUGE, perSubjectPerHour: HUGE, perParticipantConsentPerMinute: HUGE, perSubjectLocationPerHour: HUGE, ...opts.limits };
   cfg.abuse = { windowSeconds: 600, distinctSubjects: HUGE, sameRangeSubjects: HUGE, consentFailures: HUGE, autoSuspend: false, ...opts.abuse };
   cfg.resilience = { ...DEFAULT_RESILIENCE, minRequests: HUGE, ...opts.resilience };
   const limiter = new Limiter(store, pool, cfg.limits);
@@ -122,8 +122,9 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   await migrator.query("INSERT INTO route_prefix(prefix, telco_id) VALUES ('+6099900','telco-a'), ('+6099901','telco-b'), ('+6099902','telco-c')");
   await migrator.query(`INSERT INTO telco_signal_coverage(telco_id, signal) VALUES
     ('telco-a','SIM_SWAP'),('telco-a','DEVICE_SWAP'),('telco-a','CALL_FORWARDING'),('telco-a','KYC_MATCH'),
+    ('telco-a','NUMBER_RECYCLING'),('telco-a','KYC_TENURE'),('telco-a','DEVICE_LOCATION'),('telco-a','DEVICE_ROAMING'),
     ('telco-b','SIM_SWAP'),('telco-b','CALL_FORWARDING'),
-    ('telco-c','SIM_SWAP'),('telco-c','DEVICE_SWAP'),('telco-c','KYC_MATCH')`);
+    ('telco-c','SIM_SWAP'),('telco-c','DEVICE_SWAP'),('telco-c','KYC_MATCH'),('telco-c','NUMBER_RECYCLING'),('telco-c','KYC_TENURE')`);
 
   await migrator.query("INSERT INTO org_entitlement(org_id, signal, purposes) SELECT o, s.id, '{FRAUD_PREVENTION,ACCOUNT_TAKEOVER_CHECK,TRANSACTION_RISK}' FROM unnest($1::uuid[]) o CROSS JOIN signals s", [[orgA, orgB, orgC]]);
   const h = {} as Harness;
@@ -140,7 +141,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
     agents.push(agent);
     return { name, orgId, pem, key: privateKey, kid, thumb, agent };
   };
-  const ALL = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "consent:write", "consent:read", "statements:read"];
+  const ALL = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "number-recycling:check", "kyc-tenure:check", "device-location:check", "device-roaming:check", "consent:write", "consent:read", "statements:read"];
   const bankA = await h.newClient("bank-a", orgA, ALL), bankB = await h.newClient("bank-b", orgB, ALL), bankC = await h.newClient("bank-c", orgC, ["consent:read"]);
 
   h.assertion = (c, o = {}) => {

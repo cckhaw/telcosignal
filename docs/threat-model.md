@@ -98,6 +98,9 @@ F1 participant→gateway→participant API; F2 token issuance (client creds); F3
 | AB-08 | Admin attempts to mass-export logs to infer numbers | Masked-only, export role-restricted + audited + rate-limited | sec/export (M4b) |
 | AB-09 | Cache-timing inference of number's telco via latency | Normalised minimum response time floor on error paths | sec/timing (M5) — `m5-adversarial.test.ts` |
 | AB-10 | Malicious telco onboarding with endpoint pointing to internal metadata IP | Endpoint allow-list & SSRF guard, approval | sec/ssrf (M4a) |
+| AB-11 | Participant tracks a subject by repeating device-location checks with moving or shrinking circles (triangulation, stalking) | Per-signal explicit consent; radius floor 2,000 m; tight per-subject hourly cap (default 4) separate from the general cap; coordinates never stored or logged; boolean answer only; enumeration detector sees every attempt | sec/m7 location limit + privacy (M7) |
+| AB-12 | Participant uses number-recycling, tenure or roaming answers to profile a person's history or travel without a lawful basis | Per-signal consent and entitlement; roaming returns no country; recycling look-back capped at 5 years; tenure capped at 10 years; answers are boolean; uniform refusals | sec/m7 consent, scope, entitlement, roaming (M7) |
+| AB-13 | A partial, stale or hostile location/roaming answer is turned into a confident "no" (false assurance) | PARTIAL is UNAVAILABLE; schema-strict responses; only an explicit TRUE/FALSE is ever returned or billed | sec/m7 partial and hostile answers (M7) |
 
 ## 4. Residual risk register (initial; owners proposed)
 | ID | Risk | Proposed owner | Status |
@@ -145,3 +148,12 @@ New residual items R-021..R-025 are in `docs/release/residual-risks.md`, which i
 
 ## Status update after M6 (security audit and penetration test; see `docs/security/audit-and-pentest-report.md`)
 Findings fixed with regression tests: F-A1 open redirect after admin sign-in (T-040), F-A2 mock-IdP flag guard, F-A3 connect-time address check for outbound connections (T-032; R-012 mitigated), F-A4 audit verifier false alarm under concurrency (T-063), F-P1 HTTP/0.9 and 1.0, F-P2 `Expect`, F-P3 slow-header and idle connections (T-007), F-C1..F-C3 workflow hardening (T-072, T-074), F-N1 connection string on a command line (T-061). New residual risks R-026 (image digest), R-027 (repository-level secrets), R-028 (exposed Neon password). The self-run penetration test does not replace an independent one (G1, G2).
+
+## Status update after M7 (second-wave signals)
+
+Four more CAMARA signals were added with the same hardened pipeline (mTLS, bound token, signed request, scope, entitlement, quotas, per-signal consent,
+routing, strict adapters, uniform results): number recycling, KYC tenure, device location verification and device roaming status. New abuse cases AB-11 to AB-13
+are mapped in `docs/release/traceability.md`. Device location is a **sensitive** signal with extra controls (radius floor, a separate low per-subject cap, nothing stored or logged).
+Number Verification is **not** built: it needs the end user's own mobile-data session and a redirect flow, which this participant plane does not provide; the design and
+the reasons are in `docs/design/number-verification.md`. The privacy inputs are in `docs/privacy/second-wave-signals.md`. No telco covers the new signals until coverage
+is added through the two-person change; all conformance is against **mock** telcos only.

@@ -2,7 +2,7 @@
 
 Owners are **proposed**; nobody has accepted them. A risk is only "accepted" when its owner says so in writing (gate G8 in `human-gates.md`).
 Severity is my own qualitative judgement for a *live-data* deployment (H high, M medium, L low); none of these block the sandbox.
-R-001..R-020 were logged in earlier milestones (`threat-model.md`); R-021..R-025 are new in M5; R-026..R-028 are new in the M6 audit.
+R-001..R-020 were logged in earlier milestones (`threat-model.md`); R-021..R-025 are new in M5; R-026..R-028 are new in the M6 audit; R-029..R-032 are new in M7 (second-wave signals).
 
 | ID | Risk | Sev | Proposed owner | Status / next step |
 |---|---|---|---|---|
@@ -35,5 +35,9 @@ R-001..R-020 were logged in earlier milestones (`threat-model.md`); R-021..R-025
 | R-026 | Container base image is pinned by tag (`node:22.23.5-bookworm-slim`), not by digest | L | Platform | Open: pin by digest when the registry is reachable from CI; Trivy scans the built image |
 | R-027 | Deployment and database secrets are repository-level GitHub secrets: any collaborator with write access can read them by changing a workflow on a branch. The `main`-only `if:` guards and no-secret-install ordering added in M6 are defence in depth, not a control against a malicious writer | H | Repository owner + Security | Open (H-002): move the secrets into GitHub *environments* with a deployment-branch rule (main only) and required reviewers |
 | R-028 | The Neon database password was exposed once (workflow artifact on a public repository for a few minutes, and the author's own tool output) | H | Repository owner | Open until the owner rotates it and updates the `DATABASE_URL` secret and the Vercel integration (see `docs/security/audit-and-pentest-report.md`) |
+| R-029 | Device-location triangulation by a patient, consented, malicious participant (many circles over time or across organisations) is slowed and made visible, not prevented | H | Security + Privacy | Open: radius floor, per-subject cap and no-storage are built (AB-11); a cross-participant cap, anomaly alerting on shrinking circles and a counsel-approved purpose list are needed before any real use |
+| R-030 | Number Verification is not built; "does this person hold this SIM now" relies on SIM swap, device swap and call forwarding | M | Product | Open: design in `docs/design/number-verification.md`, decision D-008 |
+| R-031 | The four new signals have only been tested against mock telcos built from the pinned definitions; a real operator may differ (version, semantics of PARTIAL, tenure rules, recycling date granularity) | M | Telco Integration | Open: per-telco conformance and a pilot are needed; pins are pre-1.0 for tenure and recycling |
+| R-032 | The legal basis, consent wording and purpose limits for location, roaming, tenure and recycling are not assessed | H | Legal + Privacy | Open: questions listed in `docs/privacy/second-wave-signals.md`; gate G3 covers it |
 
 Branch protection (H-001) is an owner action tracked in `decisions-needed.md` and `human-gates.md` (G9), not a platform risk.

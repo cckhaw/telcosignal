@@ -16,5 +16,7 @@ export const startMockAggregator = (tls: MockTls, port = 0): Promise<MockTelco> 
   if (d === "7") return void res.end(JSON.stringify({ ...base, result: { value: false }, junk: "x".repeat(4000) }));
   if (d === "9") return void res.end(`{"requestId":${JSON.stringify(b["requestId"])},"carrier":${JSON.stringify(b["carrier"])},"status":"OK","result":{"value":false},"__proto__":{"polluted":true},"note":"<script>alert(1)</script>"}`);
   if (signal === "KYC_MATCH") return void res.end(JSON.stringify({ ...base, result: { fields: d === "8" ? { name: "not_available" } : d === "1" ? { name: "false" } : { name: "true", idDocument: "true" } } }));
+  const prm = (b["params"] ?? {}) as Record<string, unknown>, DATE = /^\d{4}-\d{2}-\d{2}$/;
+  if ((signal === "NUMBER_RECYCLING" && !DATE.test(String(prm["specifiedDate"]))) || (signal === "KYC_TENURE" && !DATE.test(String(prm["tenureDate"])))) return void res.end(JSON.stringify({ ...base, status: "ERROR" }));
   res.end(JSON.stringify({ ...base, result: { value: d === "1" } }));
 }, port);

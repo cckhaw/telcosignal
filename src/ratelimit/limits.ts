@@ -7,8 +7,9 @@ export interface LimitConfig {
   perTelcoPerSecond: number;               // platform-wide protection of each telco connection
   perSubjectPerHour: number;               // same participant asking about the same number (keyed hash) repeatedly
   perParticipantConsentPerMinute: number;  // consent registrations per organisation (stops consent farming and storage exhaustion)
+  perSubjectLocationPerHour: number;       // location checks for one subject by one participant: low on purpose, repeated probes with moving circles would triangulate the person
 }
-export const DEFAULT_LIMITS: LimitConfig = { perParticipantSignalPerMinute: 600, perTelcoPerSecond: 200, perSubjectPerHour: 20, perParticipantConsentPerMinute: 120 };
+export const DEFAULT_LIMITS: LimitConfig = { perParticipantSignalPerMinute: 600, perTelcoPerSecond: 200, perSubjectPerHour: 20, perParticipantConsentPerMinute: 120, perSubjectLocationPerHour: 4 };
 
 async function hit(store: EphemeralStore, key: string, ttl: number, max: number): Promise<boolean> {
   try { return (await store.incr(key, ttl)) <= max; }
@@ -32,5 +33,8 @@ export class Limiter {
   }
   async subject(orgId: string, subjectHashHex: string): Promise<void> {
     if (!(await hit(this.store, `rl:s:${orgId}:${subjectHashHex}:${bucket(3600)}`, 7200, this.cfg.perSubjectPerHour))) throw new ApiError("RATE_LIMITED", "repeat lookups of one subject exceeded");
+  }
+  async locationSubject(orgId: string, subjectHashHex: string): Promise<void> {
+    if (!(await hit(this.store, `rl:sl:${orgId}:${subjectHashHex}:${bucket(3600)}`, 7200, this.cfg.perSubjectLocationPerHour))) throw new ApiError("RATE_LIMITED", "repeat location checks of one subject exceeded");
   }
 }

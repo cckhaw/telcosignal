@@ -4,7 +4,7 @@
 > No certification, compliance or regulatory approval is claimed anywhere in this repository. The platform must not process real customer
 > data until the human gates in [`docs/release/human-gates.md`](docs/release/human-gates.md) are complete and a named risk owner has signed off.
 
-One API for four telco signals — **SIM swap, device swap, call-forwarding and KYC match** — with participant onboarding and consent, routing
+One API for eight telco signals — **SIM swap, device swap, call-forwarding, KYC match, number recycling, KYC tenure, device location and device roaming** — with participant onboarding and consent, routing
 (including number porting) to three mock telcos (A: CAMARA-style, B: proprietary, C: through a mock aggregator), a signal registry, circuit
 breakers, append-only metering, pricing and settlement statements, an admin portal, dashboards, a developer portal and runbooks.
 
@@ -12,7 +12,7 @@ Priority order when requirements conflict: **1 security, 2 privacy/regulatory, 3
 
 ## Status
 
-All milestones M0–M5 are implemented and merged to `main`, followed by a self-conducted security audit and penetration test (M6, [report](docs/security/audit-and-pentest-report.md)); see [`docs/reports/`](docs/reports) for the evidence of each and
+All milestones M0–M5 and the second-wave signals (M7) are implemented and merged to `main`, followed by a self-conducted security audit and penetration test (M6, [report](docs/security/audit-and-pentest-report.md)); see [`docs/reports/`](docs/reports) for the evidence of each and
 [`docs/release/README.md`](docs/release/README.md) for the release-gate package (threat-model traceability, test and scan report, load results,
 SBOM, residual-risk register with proposed owners, runbooks).
 
@@ -26,6 +26,7 @@ SBOM, residual-risk register with proposed owners, runbooks).
 | M4b | Logs and traces, dashboards, alerts, retention, OpenAPI, developer portal, runbooks, tested restore | [M4b](docs/reports/M4b.md) |
 | M5 | Adversarial review (OWASP API Top 10 2023 + every threat-model entry), fixes, OpenTelemetry, 200 rps load test, release package | [M5](docs/reports/M5.md) |
 | M6 | Security audit (static, manual, database, CI/CD) and black-box penetration test; 11 defects fixed with regression tests. Self-conducted: not a substitute for an independent test | [report](docs/security/audit-and-pentest-report.md) |
+| M7 | Second-wave signals: number recycling, KYC tenure, device location verification, device roaming (pinned CAMARA definitions, mock telcos only); Number Verification designed, not built | [M7](docs/reports/M7.md) |
 
 What is **not** done is listed, with proposed owners, in [`docs/release/residual-risks.md`](docs/release/residual-risks.md). The largest items: hosting for the
 participant mTLS endpoint (Vercel cannot terminate client certificates), data residency of Neon in Singapore, a real KMS/HSM, WAF/DDoS, an
@@ -45,7 +46,7 @@ Modular monolith (TypeScript, Node 22, Fastify) with **two separate listeners** 
 * **Worker** (`src/worker`): rollups, alert evaluation and escalation, retention deletion.
 * **Data**: Postgres with roles and forced row-level security, hash-chained append-only audit log with an external copy, keyed HMAC subject hashes
   (numbers are never stored or logged), Redis for replay/limits, mock KMS (`LocalKms`).
-* **Signal safety**: the result is `TRUE | FALSE | UNAVAILABLE | NOT_SUPPORTED`. `FALSE` only comes from an explicit, valid negative answer
+* **Signal safety** (all eight signals): the result is `TRUE | FALSE | UNAVAILABLE | NOT_SUPPORTED`. `FALSE` only comes from an explicit, valid negative answer
   from the telco; errors, timeouts, hostile or unsupported answers are never `FALSE`, and failures are never billed.
 
 Details: [`docs/architecture.md`](docs/architecture.md) · [`docs/threat-model.md`](docs/threat-model.md) · [`docs/admin-portal.md`](docs/admin-portal.md) ·
@@ -102,7 +103,7 @@ Note: Postgres roles are cluster-wide, so running the test suite resets role pas
 src/participant-api  src/admin  src/worker  src/identity  src/consent  src/router  src/adapters  src/resilience  src/ratelimit  src/abuse
 src/metering  src/audit  src/kms  src/db  src/telemetry  src/ops  src/common      application code
 mock/                synthetic telcos A/B, aggregator, IdP
-migrations/          001–005 SQL (schema, RLS, roles, audit, registry, limits/billing, admin/approvals, observability)
+migrations/          001–006 SQL (schema, RLS, roles, audit, registry, limits/billing, admin/approvals, observability)
 openapi/             generated participant API (3.1) + vendored, pinned, checksummed CAMARA definitions
 portal/              generated static developer portal (the only thing deployed to Vercel); source: scripts/build-portal.ts + scripts/portal.css, rebuilt with `npm run gen:portal`
 tests/               security/ unit/ dast/ load/ helpers/

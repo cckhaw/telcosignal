@@ -47,7 +47,7 @@ describe("portal structure and navigation", () => {
   });
   it("home page cards link to anchors that exist on the signals page, and previous/next links walk every page in order", () => {
     const sig = html("signals.html"); const home = html("index.html");
-    const targets = [...home.matchAll(/href="\/signals#([^"]+)"/g)].map((m) => m[1]!); expect(targets.length).toBe(4);
+    const targets = [...home.matchAll(/href="\/signals#([^"]+)"/g)].map((m) => m[1]!); expect(targets.length).toBe(8);
     for (const id of targets) expect(sig).toContain(`id="${id}"`);
     const order = ["index.html", "authentication.html", "sandbox.html", "signals.html", "errors.html", "versions.html"];
     const url = (f: string) => (f === "index.html" ? "/" : `/${f.replace(".html", "")}`);

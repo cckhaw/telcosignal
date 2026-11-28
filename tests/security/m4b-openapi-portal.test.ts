@@ -88,7 +88,7 @@ describe("developer portal", () => {
   it("covers authentication, every signal, every error code and the sandbox rules; each page states that it is a sandbox", () => {
     const html = (f: string) => readFileSync(join(dir, f), "utf8");
     for (const f of ["index.html", "authentication.html", "signals.html", "errors.html", "sandbox.html", "versions.html"]) { expect(files).toContain(f); expect(html(f)).toContain("NOT approved for live data"); }
-    for (const p of ["/v1/signals/sim-swap/check", "/v1/signals/device-swap/check", "/v1/signals/call-forwarding/check", "/v1/signals/kyc-match/check", "/v1/consents"]) expect(html("signals.html")).toContain(p);
+    for (const p of ["/v1/signals/sim-swap/check", "/v1/signals/device-swap/check", "/v1/signals/call-forwarding/check", "/v1/signals/kyc-match/check", "/v1/signals/number-recycling/check", "/v1/signals/kyc-tenure/check", "/v1/signals/device-location/check", "/v1/signals/device-roaming/check", "/v1/consents"]) expect(html("signals.html")).toContain(p);
     for (const e of CATALOGUE) { expect(html("errors.html")).toContain(e.code); expect(html("errors.html")).toContain(e.participantAction.slice(0, 20).replace(/&/g, "&amp;").replace(/'/g, "&#39;")); }
     for (const w of ["UNAVAILABLE", "NOT_SUPPORTED", "private_key_jwt", "X-Request-Signature", "cnf.x5t#S256"]) expect(Object.values(Object.fromEntries(files.filter((f) => f.endsWith(".html")).map((f) => [f, html(f)]))).join("")).toContain(w);
   });

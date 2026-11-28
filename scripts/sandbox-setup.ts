@@ -36,7 +36,7 @@ const ports = { a: 9101, b: 9102, c: 9103 };
 const o = (n: string) => `https://localhost:${n}`;
 await m.query("INSERT INTO telcos(id, adapter, base_url) VALUES ('telco-a','camara',$1),('telco-b','proprietary',$2),('telco-c','aggregator',$3)", [o(String(ports.a)), o(String(ports.b)), o(String(ports.c))]);
 await m.query("INSERT INTO route_prefix(prefix, telco_id) VALUES ('+6099900','telco-a'),('+6099901','telco-b'),('+6099902','telco-c')");
-await m.query(`INSERT INTO telco_signal_coverage(telco_id, signal) VALUES ('telco-a','SIM_SWAP'),('telco-a','DEVICE_SWAP'),('telco-a','CALL_FORWARDING'),('telco-a','KYC_MATCH'),('telco-b','SIM_SWAP'),('telco-b','CALL_FORWARDING'),('telco-c','SIM_SWAP'),('telco-c','DEVICE_SWAP'),('telco-c','KYC_MATCH')`);
+await m.query(`INSERT INTO telco_signal_coverage(telco_id, signal) VALUES ('telco-a','SIM_SWAP'),('telco-a','DEVICE_SWAP'),('telco-a','CALL_FORWARDING'),('telco-a','KYC_MATCH'),('telco-a','NUMBER_RECYCLING'),('telco-a','KYC_TENURE'),('telco-a','DEVICE_LOCATION'),('telco-a','DEVICE_ROAMING'),('telco-b','SIM_SWAP'),('telco-b','CALL_FORWARDING'),('telco-c','SIM_SWAP'),('telco-c','DEVICE_SWAP'),('telco-c','KYC_MATCH'),('telco-c','NUMBER_RECYCLING'),('telco-c','KYC_TENURE')`);
 // ---- admin plane: own certificate, own key directory, mock IdP, bootstrap administrators supplied by the operator (no default accounts) ----
 const adminPort = 9443, idpPort = 9444;
 const adminSrv = pki.issue("admin-server", { server: true }), idpSrv = pki.issue("idp-server", { server: true });
@@ -44,7 +44,7 @@ const oidcSecret = (await import("node:crypto")).randomBytes(24).toString("base6
 const bootstrap = (process.env["TS_BOOTSTRAP_ADMINS"] ?? "sandbox-admin-1,sandbox-admin-2").split(",").map((x) => x.trim()).filter(Boolean);
 if (bootstrap.length < 2) throw new Error("TS_BOOTSTRAP_ADMINS needs at least two subjects (two-person approval)");
 for (const sub of bootstrap) await m.query("INSERT INTO admin_user(sub, display_name, role) VALUES ($1,$2,'platform_admin')", [sub, `Bootstrap admin ${sub}`]);
-const SCOPES = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "consent:write", "consent:read", "statements:read"];
+const SCOPES = ["sim-swap:check", "device-swap:check", "call-forwarding:check", "kyc-match:check", "number-recycling:check", "kyc-tenure:check", "device-location:check", "device-roaming:check", "consent:write", "consent:read", "statements:read"];
 const participants: Array<Record<string, string>> = [];
 for (const name of ["sandbox-bank-a", "sandbox-bank-b"]) {
   const org = (await m.query("INSERT INTO organisations(name, kind, state) VALUES ($1,'bank','testing') RETURNING id", [`Synthetic ${name}`])).rows[0].id as string;
