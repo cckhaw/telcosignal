@@ -104,7 +104,7 @@ src/metering  src/audit  src/kms  src/db  src/telemetry  src/ops  src/common    
 mock/                synthetic telcos A/B, aggregator, IdP
 migrations/          001–005 SQL (schema, RLS, roles, audit, registry, limits/billing, admin/approvals, observability)
 openapi/             generated participant API (3.1) + vendored, pinned, checksummed CAMARA definitions
-portal/              generated static developer portal (the only thing deployed to Vercel)
+portal/              generated static developer portal (the only thing deployed to Vercel); source: scripts/build-portal.ts + scripts/portal.css, rebuilt with `npm run gen:portal`
 tests/               security/ unit/ dast/ load/ helpers/
 docs/                architecture, threat model, compliance matrix, runbooks, privacy, reports, release package
 scripts/ deploy/ docker/ .github/
