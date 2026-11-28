@@ -336,7 +336,7 @@
    ],
    [
     "tests/security/m6-audit-findings.test.ts",
-    "session fixation"
+    "(fixation)"
    ]
   ],
   "T-048": [

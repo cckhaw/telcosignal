@@ -42,7 +42,7 @@ The unit test proves the proof EXISTS; whether it PASSES is shown by the test an
 | T-044 | Cross-org view by telco/bank users | `tests/security/m4a-isolation.test.ts` — "a restricted bank user sees only their own organisation" |
 | T-045 | Admin edits/deletes logs | `tests/security/m4b-logs-trace.test.ts` — "logs cannot be edited or deleted by anyone" |
 | T-046 | Secret retrievable after creation | `tests/security/m4a-onboarding.test.ts` — "shown ONCE" |
-| T-047 | Session fixation/long sessions | `tests/security/m4a-auth.test.ts` — "every login issues a new session id"<br>`tests/security/m4a-auth.test.ts` — "idle timeout (15 min) and absolute timeout (8 h)"<br>`tests/security/m6-audit-findings.test.ts` — "session fixation" |
+| T-047 | Session fixation/long sessions | `tests/security/m4a-auth.test.ts` — "every login issues a new session id"<br>`tests/security/m4a-auth.test.ts` — "idle timeout (15 min) and absolute timeout (8 h)"<br>`tests/security/m6-audit-findings.test.ts` — "(fixation)" |
 | T-048 | Unmasking of numbers via export/search | `tests/security/m4b-logs-trace.test.ts` — "no raw phone number appears in any screen or export" |
 | T-049 | Config rollback used to re-introduce weak setting | `tests/security/m4a-approval.test.ts` — "gated rollback" |
 | T-050 | Insider kill-switch abuse (DoS) | `tests/security/m4a-approval.test.ts` — "kill switches: engaging is immediate" |
