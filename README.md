@@ -28,6 +28,7 @@ SBOM, residual-risk register with proposed owners, runbooks).
 | M6 | Security audit (static, manual, database, CI/CD) and black-box penetration test; 11 defects fixed with regression tests. Self-conducted: not a substitute for an independent test | [report](docs/security/audit-and-pentest-report.md) |
 | M7 | Second-wave signals: number recycling, KYC tenure, device location verification, device roaming (pinned CAMARA definitions, mock telcos only); Number Verification designed, not built | [M7](docs/reports/M7.md) |
 | M8 | Re-audit after M7: dependency, static and secret scans, live DAST and pen test (all clean), seeded fuzzing of the new endpoints (1 low defect fixed). Self-conducted, not independent | [report](docs/security/m8-audit.md) |
+| M9 | Residual-risk items that could be fixed in code: sliding-window quotas (R-009), shared admin counters (R-015), base image pinned by digest (R-026), per-person location cap across participants (R-029, partly), price coverage enforced in the database (R-033). The rest need a decision, vendor, owner or production data | [report](docs/reports/M9.md) |
 
 What is **not** done is listed, with proposed owners, in [`docs/release/residual-risks.md`](docs/release/residual-risks.md). The largest items: hosting for the
 participant mTLS endpoint (Vercel cannot terminate client certificates), data residency of Neon in Singapore, a real KMS/HSM, WAF/DDoS, an

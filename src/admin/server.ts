@@ -1,4 +1,5 @@
 import rateLimit from "@fastify/rate-limit";
+import type { Redis } from "ioredis";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { SignJWT, createLocalJWKSet, jwtVerify, jwtVerify as verifyJwt, type JWK } from "jose";
@@ -24,7 +25,8 @@ export interface AdminConfig {
   syntheticPrefixes: string[];                     // the only numbers the console/tests/porting forms accept
   oidc: { issuer: string; clientId: string; clientSecret: string; authEndpoint: string; tokenEndpoint: string; jwksUri: string; ca: string; redirectUri: string; allowMockParams: boolean };
 }
-export interface AdminDeps { cfg: AdminConfig; pool: Pool; audit: Audit; kms: Kms; log: Logger; registry?: AdapterRegistry }
+/** rateLimitRedis (R-015): when given, the portal's request counters are shared by every portal instance and fail closed if Redis is down; without it they are per process. */
+export interface AdminDeps { cfg: AdminConfig; pool: Pool; audit: Audit; kms: Kms; log: Logger; registry?: AdapterRegistry; rateLimitRedis?: Redis }
 export interface SessionUser extends PageUser { csrf: string; authTime: Date; createdAt: Date; lastSeenAt: Date; expiresAt: Date; idHash: Buffer }
 export class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
 
@@ -77,6 +79,7 @@ export async function buildAdminServer(d: AdminDeps): Promise<{ app: FastifyInst
   // Rate limiting: per session once signed in (per source address otherwise); stricter on the sign-in endpoints.
   await app.register(rateLimit, {
     global: true, max: d.cfg.rateLimit.perMinute, timeWindow: 60_000, nameSpace: "admin-rl:",
+    ...(d.rateLimitRedis ? { redis: d.rateLimitRedis, skipOnError: false } : {}),
     keyGenerator: (req) => { const c = parseCookies(req.headers.cookie)[SESSION_COOKIE]; return c && /^[A-Za-z0-9_-]{43}$/.test(c) ? `s:${sha(c).toString("hex").slice(0, 24)}` : `ip:${req.ip}`; },
     errorResponseBuilder: () => Object.assign(new Error("rate limited"), { statusCode: 429 }),
   });

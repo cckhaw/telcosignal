@@ -145,7 +145,7 @@ describe("client authentication hygiene (private_key_jwt)", () => {
 
 describe("fail closed when the replay store is down", () => {
   it("returns 503 and does not call the telco", async () => {
-    const down: EphemeralStore = { setNx: async () => { throw new Error("redis down"); }, incr: async () => { throw new Error("redis down"); }, addToSet: async () => { throw new Error("redis down"); }, close: async () => undefined };
+    const down: EphemeralStore = { setNx: async () => { throw new Error("redis down"); }, incr: async () => { throw new Error("redis down"); }, slide: async () => { throw new Error("redis down"); }, addToSet: async () => { throw new Error("redis down"); }, close: async () => undefined };
     const h2 = await startHarness({ store: down });
     try {
       // token endpoint also depends on the store: it must fail closed too

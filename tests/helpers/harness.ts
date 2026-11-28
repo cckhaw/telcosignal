@@ -103,7 +103,7 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const rlRedis = opts.rateLimitRedis ?? (store instanceof RedisStore ? store.redis : undefined);
   // Functional tests run with effectively-unlimited quotas / no breaker unless a test opts in, so they exercise one control at a time.
   const HUGE = 1_000_000;
-  cfg.limits = { perParticipantSignalPerMinute: HUGE, perTelcoPerSecond: HUGE, perSubjectPerHour: HUGE, perParticipantConsentPerMinute: HUGE, perSubjectLocationPerHour: HUGE, ...opts.limits };
+  cfg.limits = { perParticipantSignalPerMinute: HUGE, perTelcoPerSecond: HUGE, perSubjectPerHour: HUGE, perParticipantConsentPerMinute: HUGE, perSubjectLocationPerHour: HUGE, perSubjectLocationGlobalPerHour: HUGE, ...opts.limits };
   cfg.abuse = { windowSeconds: 600, distinctSubjects: HUGE, sameRangeSubjects: HUGE, consentFailures: HUGE, autoSuspend: false, ...opts.abuse };
   cfg.resilience = { ...DEFAULT_RESILIENCE, minRequests: HUGE, ...opts.resilience };
   const limiter = new Limiter(store, pool, cfg.limits);

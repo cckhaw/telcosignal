@@ -46,8 +46,8 @@ describe("metering is append-only and failures are never charged", () => {
   it("generate mixed traffic", async () => {
     // seed placeholder pricing
     await h.migrator.query(`INSERT INTO price_plan(id, currency, platform_fee_minor, signal_price_minor, tiers) VALUES
-      ('standard-v1','MYR',5,'{"SIM_SWAP":100,"DEVICE_SWAP":80,"CALL_FORWARDING":40,"KYC_MATCH":200}','[{"upTo":5,"pct":100},{"upTo":null,"pct":50}]'),
-      ('premium-v1','MYR',0,'{"SIM_SWAP":90,"DEVICE_SWAP":70,"CALL_FORWARDING":30,"KYC_MATCH":180}','[{"upTo":null,"pct":100}]')`);
+      ('standard-v1','MYR',5,'{"SIM_SWAP":100,"DEVICE_SWAP":80,"CALL_FORWARDING":40,"KYC_MATCH":200,"NUMBER_RECYCLING":60,"KYC_TENURE":60,"DEVICE_LOCATION":150,"DEVICE_ROAMING":50}','[{"upTo":5,"pct":100},{"upTo":null,"pct":50}]'),
+      ('premium-v1','MYR',0,'{"SIM_SWAP":90,"DEVICE_SWAP":70,"CALL_FORWARDING":30,"KYC_MATCH":180,"NUMBER_RECYCLING":55,"KYC_TENURE":55,"DEVICE_LOCATION":140,"DEVICE_ROAMING":45}','[{"upTo":null,"pct":100}]')`);
     await h.migrator.query("INSERT INTO org_price_plan(org_id, plan_id, effective_from) VALUES ($1,'standard-v1', now() - interval '30 days'), ($2,'premium-v1', now() - interval '30 days')", [h.orgA, h.orgB]);
     await h.migrator.query(`INSERT INTO telco_cost(telco_id, signal, cost_minor, effective_from) VALUES
       ('telco-a','SIM_SWAP',30,now()-interval '30 days'),('telco-a','DEVICE_SWAP',25,now()-interval '30 days'),('telco-a','CALL_FORWARDING',10,now()-interval '30 days'),('telco-a','KYC_MATCH',60,now()-interval '30 days'),
