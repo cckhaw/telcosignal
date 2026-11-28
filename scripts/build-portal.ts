@@ -21,14 +21,16 @@ const ORDER = ["index.html", "authentication.html", "sandbox.html", "signals.htm
 const LABEL = Object.fromEntries(SECTIONS.flatMap((s) => s.items));
 const href = (f: string) => (f === "index.html" ? "/" : `/${f.endsWith(".html") ? f.slice(0, -5) : f}`);
 const sectionOf = (f: string) => SECTIONS.find((s) => s.items.some(([x]) => x === f));
-const slug = (t: string) => t.replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/g, " ").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
+/** Visible text of an HTML fragment: everything outside <...> (a character scan, not a regex, so nothing half-stripped can survive). */
+const plain = (html: string): string => { let out = "", inTag = false; for (const ch of html) { if (ch === "<") inTag = true; else if (ch === ">") inTag = false; else if (!inTag) out += ch; } return out; };
+const slug = (t: string) => plain(t).replace(/&[a-z#0-9]+;/g, " ").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
 
 /** Adds a stable id and a "link to this section" anchor to every h2/h3 and returns the table of contents. */
 function withAnchors(html: string): { html: string; toc: Array<{ level: number; id: string; text: string }> } {
   const used = new Set<string>(); const toc: Array<{ level: number; id: string; text: string }> = [];
   const out = html.replace(/<h([23])>([\s\S]*?)<\/h\1>/g, (_m, lvl: string, inner: string) => {
     let id = slug(inner); for (let i = 2; used.has(id); i++) id = `${slug(inner)}-${i}`; used.add(id);
-    toc.push({ level: Number(lvl), id, text: inner.replace(/<[^>]+>/g, "") });
+    toc.push({ level: Number(lvl), id, text: plain(inner) });
     return `<h${lvl} id="${id}">${inner}<a class="anchor" href="#${id}" aria-label="Link to this section">#</a></h${lvl}>`;
   });
   return { html: out, toc };
