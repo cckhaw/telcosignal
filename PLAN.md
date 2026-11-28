@@ -1,4 +1,4 @@
-# PLAN — PayNet Telco Signal API Platform (reference implementation, sandbox only)
+# PLAN — Telco Signal API Platform (reference implementation, sandbox only)
 
 > Synthetic data only. No real telco, bank or customer data, credentials or branding.
 > NOT approved for live data. No certification or compliance is claimed anywhere in this repo.
