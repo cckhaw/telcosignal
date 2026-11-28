@@ -12,28 +12,37 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
+    # Production is deployed from main ONLY. A manual dispatch from any other branch must never run with the production secrets.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: production
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { persist-credentials: false }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22 }
+      # Install the CLI BEFORE any secret is present in the environment, and without lifecycle scripts, so a compromised dependency of the CLI
+      # cannot read the deploy token at install time.
+      - name: install the Vercel CLI (no secrets in the environment, no install scripts)
+        run: npm i -g --ignore-scripts vercel@67.0.0
       - name: require secrets (fail closed)
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           for v in VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_TOKEN; do
             [ -n "${!v}" ] || { echo "::error::$v missing"; exit 1; }
           done
       - name: deploy to production
         id: deploy
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          npm i -g vercel@67.0.0
           vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
           vercel build --prod --token "$VERCEL_TOKEN"
           URL=$(vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN")
@@ -41,4 +50,8 @@ jobs:
       - name: wait until latest production deployment is READY, then delete all older ones
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: node scripts/vercel-cleanup.mjs

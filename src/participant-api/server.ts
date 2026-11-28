@@ -30,8 +30,10 @@ const TLS12_CIPHERS = "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
 
 export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> {
   const app = Fastify({
-    https: { key: d.cfg.tls.key, cert: d.cfg.tls.cert, ca: d.cfg.tls.participantCa, requestCert: true, rejectUnauthorized: true, minVersion: "TLSv1.2", ciphers: TLS12_CIPHERS, honorCipherOrder: true },
-    bodyLimit: 4096, connectionTimeout: 10_000, requestTimeout: 8_000, keepAliveTimeout: 5_000, routerOptions: { maxParamLength: 64 },
+    https: { key: d.cfg.tls.key, cert: d.cfg.tls.cert, ca: d.cfg.tls.participantCa, requestCert: true, rejectUnauthorized: true, minVersion: "TLSv1.2", ciphers: TLS12_CIPHERS, honorCipherOrder: true,
+      connectionsCheckingInterval: 1000 },   // slow-header (slow-loris) clients are reaped within seconds of requestTimeout: Node only checks every 30 s by default. (Do NOT also set headersTimeout below connectionTimeout: that combination stops idle connections being reaped; found by the pen test.)
+    bodyLimit: 4096, connectionTimeout: 6_000, requestTimeout: 8_000,   // connectionTimeout MUST stay below requestTimeout: with the short checking interval Node otherwise never reaps idle sockets (found by the pen test)
+    keepAliveTimeout: 5_000, routerOptions: { maxParamLength: 64 },
     disableRequestLogging: true, trustProxy: false, genReqId: () => randomUUID(), loggerInstance: d.log,
     onProtoPoisoning: "error", onConstructorPoisoning: "error",
   });
@@ -61,6 +63,11 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
   const routeTable: Array<{ method: string; url: string }> = [];
   app.addHook("onRoute", (r) => { for (const m of ([] as string[]).concat(r.method as string | string[])) if (m !== "HEAD") routeTable.push({ method: m, url: r.url }); });
   app.decorate("routeTable", routeTable);
+  // Only HTTP/1.1 is served: HTTP/0.9-style request lines (no version) and 1.0 are refused, and Expect: 100-continue is never honoured
+  // (the body limit is enforced before any "100 Continue" invitation to upload).
+  app.server.on("checkContinue", (_req, res) => { res.writeHead(417, { connection: "close" }); res.end(); });
+  app.server.on("checkExpectation", (_req, res) => { res.writeHead(417, { connection: "close" }); res.end(); });
+  app.addHook("onRequest", async (req, reply) => { if (req.raw.httpVersion !== "1.1") return reply.code(505).header("connection", "close").type("text/plain").send("HTTP/1.1 only"); });
   app.addHook("onRequest", async (req) => { const t = performance.now(); (req as FastifyRequest & { tr?: Tr }).tr = { t0: t, last: t, steps: [], lc: {} }; });
   app.addHook("onResponse", async (req, reply) => {
     const t = trOf(req); const route = req.routeOptions?.url;

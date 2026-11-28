@@ -87,13 +87,13 @@ export async function startHarness(opts: { store?: EphemeralStore; telcoTimeoutM
   const telcoOrigin = `https://localhost:${telco.port}`;
   const cfg: Config = {
     databaseUrl: urls.app, redisUrl: REDIS_URL, participantPort: 0,
-    tls: { cert: server.cert, key: server.key, participantCa: pki.caCert }, telcoMtls: { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key },
+    tls: { cert: server.cert, key: server.key, participantCa: pki.caCert }, telcoMtls: { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key, allowPrivateAddresses: true },
     issuer: "https://platform.test", audience: "telco-signal-api", tokenEndpoint: "https://localhost:0/oauth/token",
     kmsDir, auditSinkPath: auditSink, telcoAllowList: [telcoOrigin, `https://localhost:${telcoB.port}`, `https://localhost:${aggregator.port}`], telcoTimeoutMs: opts.telcoTimeoutMs ?? 700, requestSkewSeconds: 60, minResponseMs: opts.minResponseMs ?? 0,
     rateLimitPerSecond: opts.rps ?? 5000, tokenRateLimitPerSecond: opts.tokenRps ?? 5000,   // high by default so functional tests are not throttled
     limits: DEFAULT_LIMITS_T, abuse: DEFAULT_ABUSE_T, resilience: DEFAULT_RESILIENCE,   // replaced just below with test values
   };
-  const mtls = { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key };
+  const mtls = { ca: pki.caCert, cert: platformOut.cert, key: platformOut.key, allowPrivateAddresses: true };
   const bOrigin = `https://localhost:${telcoB.port}`, cOrigin = `https://localhost:${aggregator.port}`;
   const adapters = new Map<string, TelcoAdapterT>([
     ["telco-a", new TelcoAAdapter("telco-a", telcoOrigin, cfg.telcoAllowList, mtls, cfg.telcoTimeoutMs)],

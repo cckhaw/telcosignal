@@ -48,10 +48,12 @@ export async function verifyAuditChain(reader: Pool, sinkPath: string): Promise<
     if (!h.equals(Buffer.from(r.hash))) return { ok: false, rows: rows.length, problem: `hash mismatch at ${r.seq}` };
     prev = h; expectSeq += 1n;
   }
+  // The external copy is appended AFTER each database commit, so under concurrency its lines can be in a different ORDER from the chain.
+  // Compare by sequence number (every database row must appear exactly once with the same hash), not by position.
   const ext = existsSync(sinkPath) ? readFileSync(sinkPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { seq: string; hash: string }) : [];
   if (ext.length !== rows.length) return { ok: false, rows: rows.length, problem: `external copy has ${ext.length} rows, database has ${rows.length}` };
-  for (let i = 0; i < rows.length; i++) {
-    if (ext[i]?.hash !== Buffer.from(rows[i].hash).toString("hex")) return { ok: false, rows: rows.length, problem: `external copy differs at ${rows[i].seq}` };
-  }
+  const bySeq = new Map<string, string>();
+  for (const e of ext) { if (bySeq.has(e.seq)) return { ok: false, rows: rows.length, problem: `external copy repeats ${e.seq}` }; bySeq.set(e.seq, e.hash); }
+  for (const r of rows) if (bySeq.get(String(r.seq)) !== Buffer.from(r.hash).toString("hex")) return { ok: false, rows: rows.length, problem: `external copy differs at ${r.seq}` };
   return { ok: true, rows: rows.length };
 }

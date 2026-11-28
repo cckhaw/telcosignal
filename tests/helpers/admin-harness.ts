@@ -20,7 +20,7 @@ export interface Admin {
   users: Record<string, string>;
 }
 export interface Session {
-  ok: boolean; status: number; cookie: string; setCookie: string[]; csrf: string;
+  ok: boolean; status: number; cookie: string; setCookie: string[]; csrf: string; location?: string;
   get(path: string, o?: { headers?: Record<string, string> }): Promise<R>;
   post(path: string, form: Record<string, string>, o?: { csrf?: string | null; origin?: string | null; contentType?: string; raw?: string }): Promise<R>;
 }
@@ -39,7 +39,7 @@ export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleM
     oidc: { issuer: idp.issuer, clientId: "admin-portal", clientSecret, authEndpoint: `${idp.origin}/authorize`, tokenEndpoint: `${idp.origin}/token`, jwksUri: `${idp.origin}/jwks`, ca: h.pki.caCert, redirectUri: "", allowMockParams: true },
   };
   // the portal's conformance runner uses the portal's OWN restricted role, exactly as in production
-  const registry = new AdapterRegistry(staffScopedPool(pool), { mtls: { ca: h.pki.caCert, cert: h.platformOut.cert, key: h.platformOut.key }, timeoutMs: 1500, resilience: DEFAULT_RESILIENCE, envAllowList: [], ttlMs: 50, allowLoopback: true });
+  const registry = new AdapterRegistry(staffScopedPool(pool), { mtls: { ca: h.pki.caCert, cert: h.platformOut.cert, key: h.platformOut.key, allowPrivateAddresses: true }, timeoutMs: 1500, resilience: DEFAULT_RESILIENCE, envAllowList: [], ttlMs: 50, allowLoopback: true });
   const app = await buildAdmin({ cfg, pool, audit, kms: h.kms, log, registry });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const port = (app.server.address() as { port: number }).port;
@@ -89,7 +89,7 @@ export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleM
     const cookie = sess ? sess.split(";")[0]! : "";
     let csrf = "";
     if (cookie) { const home = await mk(cookie, "").get("/"); csrf = /name="_csrf" value="([^"]+)"/.exec(home.text)?.[1] ?? ""; }
-    return { ok: c.status === 302 && !!cookie, status: c.status, cookie, setCookie: sc, csrf, ...mk(cookie, csrf) };
+    return { ok: c.status === 302 && !!cookie, status: c.status, cookie, setCookie: sc, csrf, location: String(c.headers["location"] ?? ""), ...mk(cookie, csrf) };
   };
   const users = Object.fromEntries(seed.map((u) => [u.sub, u.sub]));
   return {

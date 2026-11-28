@@ -50,13 +50,19 @@ export interface RouteCtx { req: FastifyRequest; reply: FastifyReply; user: Sess
 type Handler = (c: RouteCtx) => Promise<unknown>;
 
 export async function buildAdminServer(d: AdminDeps): Promise<{ app: FastifyInstance; route: (m: "GET" | "POST", path: string, roles: readonly string[], fn: Handler) => void }> {
+  // The mock-IdP test parameters (forcing an MFA method, tampering with tokens) are a sandbox convenience. Refuse to start with them on unless the
+  // identity provider is on this machine, so a forgotten flag can never reach a real deployment.
+  if (d.cfg.oidc.allowMockParams && !["localhost", "127.0.0.1", "[::1]", "::1"].includes(new URL(d.cfg.oidc.issuer).hostname)) throw new Error("mock OIDC parameters are enabled but the identity provider is not local: refusing to start");
   const app = Fastify({
-    https: { key: d.cfg.tls.key, cert: d.cfg.tls.cert, minVersion: "TLSv1.2" }, bodyLimit: 32 * 1024, connectionTimeout: 10_000, requestTimeout: 15_000,
+    https: { key: d.cfg.tls.key, cert: d.cfg.tls.cert, minVersion: "TLSv1.2", connectionsCheckingInterval: 1000 }, bodyLimit: 32 * 1024, connectionTimeout: 10_000, requestTimeout: 15_000,
     disableRequestLogging: true, trustProxy: false, loggerInstance: d.log, onProtoPoisoning: "error", onConstructorPoisoning: "error", routerOptions: { maxParamLength: 80 },
   });
   const oidcAgent = new Agent({ connect: { ca: d.cfg.oidc.ca, rejectUnauthorized: true } });
 
+  app.server.on("checkContinue", (_req, res) => { res.writeHead(417, { connection: "close" }); res.end(); });
+  app.server.on("checkExpectation", (_req, res) => { res.writeHead(417, { connection: "close" }); res.end(); });
   app.addHook("onRequest", async (req, reply) => {
+    if (req.raw.httpVersion !== "1.1") return reply.code(505).header("connection", "close").type("text/plain").send("HTTP/1.1 only");
     if (!ipAllowed(req.ip, d.cfg.allowedCidrs)) return reply.code(403).type("text/plain").send("forbidden");       // isolated interface: source allow-list, fail closed
     (req as FastifyRequest & { nonce?: string }).nonce = randomBytes(16).toString("base64url");
   });
@@ -112,7 +118,7 @@ export async function buildAdminServer(d: AdminDeps): Promise<{ app: FastifyInst
     const q = req.query as Record<string, string | undefined>;
     const state = randomBytes(24).toString("base64url"), nonce = randomBytes(24).toString("base64url"), verifier = randomBytes(48).toString("base64url");
     const stepUp = q["stepup"] === "1";
-    const ret = q["return"] && /^\/[A-Za-z0-9/_-]*$/.test(q["return"]) ? q["return"] : "/";
+    const ret = q["return"] && /^\/(?!\/)[A-Za-z0-9/_-]*$/.test(q["return"]) ? q["return"] : "/";
     const { kid, privateKey } = await d.kms.currentSigningKey();
     const jws = await new SignJWT({ st: state, n: nonce, cv: verifier, su: stepUp, rt: ret }).setProtectedHeader({ alg: "ES256", kid, typ: "login+jwt" }).setIssuedAt().setExpirationTime("5m").setIssuer("admin-portal").sign(privateKey);
     const u = new URL(d.cfg.oidc.authEndpoint);

@@ -1,7 +1,10 @@
 // Shared hardened outbound client for every telco/aggregator adapter. All telco responses are UNTRUSTED input.
 import { Agent, request } from "undici";
+import { lookup as dnsLookup } from "node:dns";
+import { isIP } from "node:net";
+import { isBlockedAddress } from "../common/ssrf.js";
 
-export interface MtlsOptions { ca: string; cert: string; key: string }
+export interface MtlsOptions { ca: string; cert: string; key: string; allowPrivateAddresses?: boolean }   // allowPrivateAddresses: sandbox only (the mock telcos are on loopback)
 export type Fetched = { ok: true; status: number; text: string } | { ok: false; reason: string };
 
 export class OutboundClient {
@@ -12,8 +15,20 @@ export class OutboundClient {
     if (u.protocol !== "https:") throw new Error("telco endpoint must be https");
     if (!allowList.includes(u.origin)) throw new Error("telco endpoint not on the outbound allow-list");   // SSRF control
     this.origin = u.origin;
+    const allowPrivate = mtls.allowPrivateAddresses === true;
+    const host = u.hostname.replace(/^\[|\]$/g, "");
+    if (isIP(host) && isBlockedAddress(host, allowPrivate)) throw new Error("telco endpoint address is private, loopback or link-local");
+    // The address the socket really connects to is checked AFTER name resolution, every time (internal addresses, DNS rebinding).
+    // If ANY resolved address is blocked the whole name is refused (a mixed answer is a rebinding signal).
+    const lookup = (hostname: string, opts: { all?: boolean; family?: number }, cb: (...a: unknown[]) => void): void => {
+      dnsLookup(hostname, { ...(opts as object), all: true, verbatim: true } as never, ((err: Error | null, addrs: Array<{ address: string; family: number }>) => {
+        if (err) return cb(err, "", 0);
+        if (!addrs.length || addrs.some((x) => isBlockedAddress(x.address, allowPrivate))) return cb(new Error("telco host resolves to a blocked address"), "", 0);
+        return opts.all ? cb(null, addrs) : cb(null, addrs[0]!.address, addrs[0]!.family);
+      }) as never);
+    };
     // TLS verification is always on: server cert verified against the pinned CA; client cert presented (mTLS). Redirects are never followed.
-    this.agent = new Agent({ connect: { ca: mtls.ca, cert: mtls.cert, key: mtls.key, rejectUnauthorized: true, minVersion: "TLSv1.2" }, maxRedirections: 0 } as never);
+    this.agent = new Agent({ connect: { ca: mtls.ca, cert: mtls.cert, key: mtls.key, rejectUnauthorized: true, minVersion: "TLSv1.2", lookup }, maxRedirections: 0 } as never);
   }
   /** POST with hard time and size limits. Never throws. Non-200, wrong content-type, oversized or slow responses => ok:false. */
   async post(path: string, body: string, headers: Record<string, string>, accept: RegExp): Promise<Fetched> {
