@@ -6,15 +6,15 @@ The unit test proves the proof EXISTS; whether it PASSES is shown by the test an
 
 | ID | Threat (see threat model) | Where it is proven |
 |---|---|---|
-| T-001 | Stolen/forged access token used | `tests/security/m1-acceptance.test.ts` — "rejects alg=none and HS256 tokens"<br>`tests/security/m1-acceptance.test.ts` — "rejects wrong audience, wrong issuer, expired" |
+| T-001 | Stolen/forged access token used | `tests/security/m1-acceptance.test.ts` — "rejects alg=none and HS256 tokens"<br>`tests/security/m1-acceptance.test.ts` — "rejects wrong audience, wrong issuer, expired"<br>`tests/security/m6-audit-findings.test.ts` — "forged headers (jku, x5u" |
 | T-002 | Token replay from another host | `tests/security/m1-acceptance.test.ts` — "sender constraint" |
-| T-003 | Client auth with weak/shared secret | `tests/security/m1-controls.test.ts` — "client authentication hygiene" |
-| T-004 | Request body tampering in transit/proxy | `tests/security/m1-acceptance.test.ts` — "body altered after signing" |
+| T-003 | Client auth with weak/shared secret | `tests/security/m1-controls.test.ts` — "client authentication hygiene"<br>`tests/security/m6-audit-findings.test.ts` — "one client assertion presented 40 times" |
+| T-004 | Request body tampering in transit/proxy | `tests/security/m1-acceptance.test.ts` — "body altered after signing"<br>`tests/security/m6-audit-findings.test.ts` — "request signature with the wrong algorithm family" |
 | T-005 | Participant denies request | `tests/security/m1-controls.test.ts` — "verifies, and records access without any phone number" |
 | T-006 | Error/timing reveals number existence | `tests/security/m1-controls.test.ts` — "indistinguishable from a telco failure"<br>`tests/security/m1-acceptance.test.ts` — "rejects expired, revoked, wrong-purpose, wrong-signal and wrong-subject consent identically"<br>`tests/security/m5-adversarial.test.ts` — "failed authentication gives one uniform answer" |
-| T-007 | Flood / slow-loris / large body | `tests/security/m1-ratelimit.test.ts` — "rate limiting (baseline"<br>`tests/security/m5-adversarial.test.ts` — "a flood above the limit is shed with 429"<br>`tests/security/m5-adversarial.test.ts` — "slow headers do not hold a connection" |
+| T-007 | Flood / slow-loris / large body | `tests/security/m1-ratelimit.test.ts` — "rate limiting (baseline"<br>`tests/security/m5-adversarial.test.ts` — "a flood above the limit is shed with 429"<br>`tests/security/m5-adversarial.test.ts` — "slow headers do not hold a connection"<br>`tests/security/m6-audit-findings.test.ts` — "protocol abuse on both listeners" |
 | T-008 | Scope escalation (request signal not entitled) | `tests/security/m1-acceptance.test.ts` — "M1 acceptance: wrong scope" |
-| T-009 | Replay of signed request | `tests/security/m1-acceptance.test.ts` — "rejects an identical signed request replayed"<br>`tests/security/m1-controls.test.ts` — "fail closed when the replay store is down" |
+| T-009 | Replay of signed request | `tests/security/m1-acceptance.test.ts` — "rejects an identical signed request replayed"<br>`tests/security/m1-controls.test.ts` — "fail closed when the replay store is down"<br>`tests/security/m6-audit-findings.test.ts` — "replayed 40 times in parallel" |
 | T-010 | TLS downgrade / weak ciphers | `tests/security/m1-controls.test.ts` — "refuses TLS 1.1 and below"<br>`tests/security/m1-controls.test.ts` — "negotiates TLS 1.3 by default" |
 | T-011 | Mass assignment / unknown fields | `tests/security/m1-controls.test.ts` — "rejects unknown fields (mass assignment)"<br>`tests/security/m5-adversarial.test.ts` — "read-only and server-controlled properties cannot be written" |
 | T-012 | Unsafe deserialisation / prototype pollution | `tests/security/m1-controls.test.ts` — "__proto__ / constructor pollution" |
@@ -24,40 +24,40 @@ The unit test proves the proof EXISTS; whether it PASSES is shown by the test an
 | T-021 | Tenant leakage with pooled connections | `tests/security/m1-controls.test.ts` — "does not leak across pooled connection reuse" |
 | T-022 | SQL injection | `tests/security/m5-adversarial.test.ts` — "error bodies never contain stack traces"<br>`tests/security/m4b-logs-trace.test.ts` — "hostile filter input is refused without reaching SQL"<br>`tests/dast/run.ts` — "' OR '1'='1"<br>`.semgrep/project.yml` — "no-raw-sql-concat" |
 | T-023 | Raw MSISDN stored/logged | `tests/security/m1-controls.test.ts` — "no E.164 number in logs, audit, usage records or consent rows" |
-| T-024 | Consent bypass / stale consent | `tests/security/m1-acceptance.test.ts` — "M1 acceptance: missing / invalid consent" |
+| T-024 | Consent bypass / stale consent | `tests/security/m1-acceptance.test.ts` — "M1 acceptance: missing / invalid consent"<br>`tests/security/m6-audit-findings.test.ts` — "revoke racing 60 in-flight checks" |
 | T-025 | KYC match inputs retained | `tests/security/m2-signals.test.ts` — "KYC inputs are never stored or logged" |
 | T-026 | Backup/restore tamper or data loss | `tests/security/m4b-backup-restore.test.ts` — "TESTED RESTORE" |
 | T-030 | Malicious/oversized/malformed telco response (injection, huge JSON, type confusion) | `tests/security/m2-signals.test.ts` — "malicious or broken telco/aggregator responses are rejected" |
 | T-031 | Telco returns inconsistent data to cause false "no swap" | `tests/security/m1-controls.test.ts` — "signal safety: failures are UNAVAILABLE / NOT_SUPPORTED, never FALSE" |
-| T-032 | SSRF via admin-configured endpoint or redirects | `tests/security/m2-signals.test.ts` — "adapters refuse endpoints that are not on the allow-list"<br>`tests/security/m4a-onboarding.test.ts` — "SSRF-prone URLs are refused" |
+| T-032 | SSRF via admin-configured endpoint or redirects | `tests/security/m2-signals.test.ts` — "adapters refuse endpoints that are not on the allow-list"<br>`tests/security/m4a-onboarding.test.ts` — "SSRF-prone URLs are refused"<br>`tests/security/m6-audit-findings.test.ts` — "F-A3" |
 | T-033 | Telco impersonation | `tests/security/m2-signals.test.ts` — "untrusted CA is not trusted" |
 | T-034 | Slow/hung telco exhausts resources | `tests/security/m3-resilience.test.ts` — "fault injection: circuit breaker"<br>`tests/security/m3-resilience.test.ts` — "bulkhead (bounded concurrency per telco)"<br>`tests/security/m1-controls.test.ts` — "the timeout bound holds" |
 | T-035 | Platform leaks participant identity to telco beyond need | `tests/security/m2-signals.test.ts` — "the telco receives only what the signal needs" |
 | T-036 | Porting data poisoning (route to attacker telco) | `tests/security/m2-signals.test.ts` — "PORTING: a number ported from A"<br>`tests/security/m4a-approval.test.ts` — "porting: the number is hashed in the portal" |
 | T-037 | Aggregator trusted blindly | `tests/security/m2-signals.test.ts` — "aggregator answers are bound to the request" |
-| T-040 | Admin account takeover | `tests/security/m4a-auth.test.ts` — "phishing-resistant MFA is mandatory (fail closed)" |
-| T-041 | Single admin changes keys/prices/limits/policy/routing | `tests/security/m4a-approval.test.ts` — "the two-person rule cannot be bypassed" |
-| T-042 | CSRF on admin | `tests/security/m4a-auth.test.ts` — "CSRF: a state-changing request needs a valid token" |
+| T-040 | Admin account takeover | `tests/security/m4a-auth.test.ts` — "phishing-resistant MFA is mandatory (fail closed)"<br>`tests/security/m6-audit-findings.test.ts` — "the post-sign-in return target can never leave this site" |
+| T-041 | Single admin changes keys/prices/limits/policy/routing | `tests/security/m4a-approval.test.ts` — "the two-person rule cannot be bypassed"<br>`tests/security/m6-audit-findings.test.ts` — "two administrators deciding the same change" |
+| T-042 | CSRF on admin | `tests/security/m4a-auth.test.ts` — "CSRF: a state-changing request needs a valid token"<br>`tests/security/m6-audit-findings.test.ts` — "Origin: null" |
 | T-043 | XSS in admin UI (e.g. via logged fields, telco names) | `tests/security/m4a-auth.test.ts` — "XSS: hostile data is escaped everywhere"<br>`tests/security/m4b-logs-trace.test.ts` — "escaped in the log views" |
 | T-044 | Cross-org view by telco/bank users | `tests/security/m4a-isolation.test.ts` — "a restricted bank user sees only their own organisation" |
 | T-045 | Admin edits/deletes logs | `tests/security/m4b-logs-trace.test.ts` — "logs cannot be edited or deleted by anyone" |
 | T-046 | Secret retrievable after creation | `tests/security/m4a-onboarding.test.ts` — "shown ONCE" |
-| T-047 | Session fixation/long sessions | `tests/security/m4a-auth.test.ts` — "every login issues a new session id"<br>`tests/security/m4a-auth.test.ts` — "idle timeout (15 min) and absolute timeout (8 h)" |
+| T-047 | Session fixation/long sessions | `tests/security/m4a-auth.test.ts` — "every login issues a new session id"<br>`tests/security/m4a-auth.test.ts` — "idle timeout (15 min) and absolute timeout (8 h)"<br>`tests/security/m6-audit-findings.test.ts` — "(fixation)" |
 | T-048 | Unmasking of numbers via export/search | `tests/security/m4b-logs-trace.test.ts` — "no raw phone number appears in any screen or export" |
 | T-049 | Config rollback used to re-introduce weak setting | `tests/security/m4a-approval.test.ts` — "gated rollback" |
 | T-050 | Insider kill-switch abuse (DoS) | `tests/security/m4a-approval.test.ts` — "kill switches: engaging is immediate" |
 | T-060 | Redis down → bypass limits/replay | `tests/security/m1-ratelimit.test.ts` — "fails closed when the rate-limit store is unavailable"<br>`tests/security/m3-abuse.test.ts` — "fails closed when the limiter store is unavailable" |
-| T-061 | Secrets in logs/images/repo | `.github/workflows/ci.yml` — "secret-scan"<br>`tests/security/m1-controls.test.ts` — "the key directory is private"<br>`tests/security/m1-controls.test.ts` — "no E.164 number in logs" |
+| T-061 | Secrets in logs/images/repo | `.github/workflows/ci.yml` — "secret-scan"<br>`tests/security/m1-controls.test.ts` — "the key directory is private"<br>`tests/security/m1-controls.test.ts` — "no E.164 number in logs"<br>`tests/unit/secrets-hygiene.test.ts` — "connection strings never go on a command line" |
 | T-062 | KMS key compromise / no rotation | `tests/security/m1-controls.test.ts` — "KMS: key versions and rotation" |
-| T-063 | Audit chain tampering | `tests/security/m1-controls.test.ts` — "tampering by a superuser is detected" |
+| T-063 | Audit chain tampering | `tests/security/m1-controls.test.ts` — "tampering by a superuser is detected"<br>`tests/security/m6-audit-findings.test.ts` — "F-A4" |
 | T-064 | Telemetry attributes include PII | `tests/security/m5-telemetry.test.ts` — "telemetry attributes" |
 | T-065 | Metering altered to change billing | `tests/security/m3-metering.test.ts` — "metering is append-only and failures are never charged" |
 | T-066 | Dashboard disagrees with usage | `tests/security/m4b-dashboards-alerts.test.ts` — "ACCEPTANCE: dashboard totals reconcile with usage records" |
-| T-070 | Vulnerable/malicious dependency | `.github/workflows/ci.yml` — "dependency-scan" |
+| T-070 | Vulnerable/malicious dependency | `.github/workflows/ci.yml` — "dependency-scan"<br>`tests/unit/ci-hygiene.test.ts` — "global npm installs happen before any secret" |
 | T-071 | Secret committed | `.github/workflows/ci.yml` — "secret-scan" |
-| T-072 | Compromised CI action | `.github/workflows/ci.yml` — "workflow-lint" |
+| T-072 | Compromised CI action | `.github/workflows/ci.yml` — "workflow-lint"<br>`tests/unit/ci-hygiene.test.ts` — "every third-party action is pinned" |
 | T-073 | Image tamper / root container | `.github/workflows/ci.yml` — "container-iac-scan" |
-| T-074 | Deploy token misuse (Vercel) | `tests/security/m4b-openapi-portal.test.ts` — "hosting configuration enforces a strict content security policy"<br>`.github/workflows/deploy-production.yml` — "VERCEL_TOKEN" |
+| T-074 | Deploy token misuse (Vercel) | `tests/security/m4b-openapi-portal.test.ts` — "hosting configuration enforces a strict content security policy"<br>`.github/workflows/deploy-production.yml` — "VERCEL_TOKEN"<br>`tests/unit/ci-hygiene.test.ts` — "limited to main" |
 | T-075 | Preview deployments expose unreleased content | `vercel.json` — "deploymentEnabled"<br>`.github/workflows/deploy-production.yml` — "--prod" |
 | AB-01 | Bank enumerates number ranges to learn who has a SIM swap / who is a subscriber | `tests/security/m3-abuse.test.ts` — "enumeration and bulk-lookup detection" |
 | AB-02 | Bank queries without real customer relationship (purpose abuse) | `tests/security/m1-acceptance.test.ts` — "M1 acceptance: missing / invalid consent"<br>`tests/security/m5-adversarial.test.ts` — "the signal flow cannot be run without a registered consent" |

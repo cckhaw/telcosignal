@@ -9,6 +9,10 @@
    [
     "tests/security/m1-acceptance.test.ts",
     "rejects wrong audience, wrong issuer, expired"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "forged headers (jku, x5u"
    ]
   ],
   "T-002": [
@@ -21,12 +25,20 @@
    [
     "tests/security/m1-controls.test.ts",
     "client authentication hygiene"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "one client assertion presented 40 times"
    ]
   ],
   "T-004": [
    [
     "tests/security/m1-acceptance.test.ts",
     "body altered after signing"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "request signature with the wrong algorithm family"
    ]
   ],
   "T-005": [
@@ -61,6 +73,10 @@
    [
     "tests/security/m5-adversarial.test.ts",
     "slow headers do not hold a connection"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "protocol abuse on both listeners"
    ]
   ],
   "T-008": [
@@ -77,6 +93,10 @@
    [
     "tests/security/m1-controls.test.ts",
     "fail closed when the replay store is down"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "replayed 40 times in parallel"
    ]
   ],
   "T-010": [
@@ -161,6 +181,10 @@
    [
     "tests/security/m1-acceptance.test.ts",
     "M1 acceptance: missing / invalid consent"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "revoke racing 60 in-flight checks"
    ]
   ],
   "T-025": [
@@ -195,6 +219,10 @@
    [
     "tests/security/m4a-onboarding.test.ts",
     "SSRF-prone URLs are refused"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "F-A3"
    ]
   ],
   "T-033": [
@@ -243,18 +271,30 @@
    [
     "tests/security/m4a-auth.test.ts",
     "phishing-resistant MFA is mandatory (fail closed)"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "the post-sign-in return target can never leave this site"
    ]
   ],
   "T-041": [
    [
     "tests/security/m4a-approval.test.ts",
     "the two-person rule cannot be bypassed"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "two administrators deciding the same change"
    ]
   ],
   "T-042": [
    [
     "tests/security/m4a-auth.test.ts",
     "CSRF: a state-changing request needs a valid token"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "Origin: null"
    ]
   ],
   "T-043": [
@@ -293,6 +333,10 @@
    [
     "tests/security/m4a-auth.test.ts",
     "idle timeout (15 min) and absolute timeout (8 h)"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "(fixation)"
    ]
   ],
   "T-048": [
@@ -335,6 +379,10 @@
    [
     "tests/security/m1-controls.test.ts",
     "no E.164 number in logs"
+   ],
+   [
+    "tests/unit/secrets-hygiene.test.ts",
+    "connection strings never go on a command line"
    ]
   ],
   "T-062": [
@@ -347,6 +395,10 @@
    [
     "tests/security/m1-controls.test.ts",
     "tampering by a superuser is detected"
+   ],
+   [
+    "tests/security/m6-audit-findings.test.ts",
+    "F-A4"
    ]
   ],
   "T-064": [
@@ -371,6 +423,10 @@
    [
     ".github/workflows/ci.yml",
     "dependency-scan"
+   ],
+   [
+    "tests/unit/ci-hygiene.test.ts",
+    "global npm installs happen before any secret"
    ]
   ],
   "T-071": [
@@ -383,6 +439,10 @@
    [
     ".github/workflows/ci.yml",
     "workflow-lint"
+   ],
+   [
+    "tests/unit/ci-hygiene.test.ts",
+    "every third-party action is pinned"
    ]
   ],
   "T-073": [
@@ -399,6 +459,10 @@
    [
     ".github/workflows/deploy-production.yml",
     "VERCEL_TOKEN"
+   ],
+   [
+    "tests/unit/ci-hygiene.test.ts",
+    "limited to main"
    ]
   ],
   "T-075": [

@@ -11,6 +11,7 @@
 | Dependency audit | `npm audit` | 0 vulnerabilities |
 | Pin check | `node scripts/check-pins.mjs` | all dependency pins exact |
 | DAST, participant API | `npx tsx tests/dast/run.ts` against the running sandbox | 53/53 |
+| Penetration test (live sandbox) | `npx tsx tests/pentest/run.ts` | 72/72 (68/71 before the M6 fixes) |
 | DAST, admin portal | `npx tsx tests/dast/admin.ts` against the running sandbox | 72/72 |
 | Load, baseline | `tests/load/run.ts` 200 rps x 60 s | 12 000/12 000 answered, overhead p95 16 ms |
 | Load, 5 % faulty telco | same with `LOAD_FAULT_PCT=5` | 12 000/12 000 answered, overhead p95 19 ms, 595 UNAVAILABLE, no fabricated FALSE |

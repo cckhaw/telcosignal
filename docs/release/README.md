@@ -11,6 +11,7 @@
 | SBOM (CycloneDX; includes dev dependencies as a superset, see F-M5-7) | [`sbom.cdx.json`](sbom.cdx.json) (`npm run sbom`) |
 | Load test results | [`load-results.md`](load-results.md), raw files in [`load/`](load) |
 | Runbooks | [`../runbooks/`](../runbooks) |
+| Security audit and penetration test (self-conducted; findings, fixes, limits) | [`../security/audit-and-pentest-report.md`](../security/audit-and-pentest-report.md), raw results [`../security/pentest-results.json`](../security/pentest-results.json) |
 | Residual-risk register with proposed owners | [`residual-risks.md`](residual-risks.md) |
 | Plain statement that the platform is NOT approved for live data, and the human gates | [`human-gates.md`](human-gates.md) |
 | Adversarial review of my own sandbox (OWASP API Top 10 2023 + every threat-model entry) | [`../reports/M5.md`](../reports/M5.md) |

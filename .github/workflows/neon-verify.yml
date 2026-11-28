@@ -11,6 +11,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   neon:
+    # Only ever from main: a dispatch from another branch would run that branch's code with the database secrets.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     services:

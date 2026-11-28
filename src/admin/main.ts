@@ -31,7 +31,7 @@ const cfg: AdminConfig = {
   oidc: { issuer: env("TS_OIDC_ISSUER"), clientId: env("TS_OIDC_CLIENT_ID"), clientSecret: file("TS_OIDC_CLIENT_SECRET").trim(), authEndpoint: env("TS_OIDC_AUTH_ENDPOINT"), tokenEndpoint: env("TS_OIDC_TOKEN_ENDPOINT"), jwksUri: env("TS_OIDC_JWKS_URI"), ca: file("TS_OIDC_CA"), redirectUri: `${origin}/oidc/callback`, allowMockParams: process.env["TS_ADMIN_ALLOW_MOCK_PARAMS"] === "true" },
 };
 const registry = new AdapterRegistry(staffScopedPool(pool), {
-  mtls: { ca: file("TS_TELCO_CA"), cert: file("TS_TELCO_CLIENT_CERT"), key: file("TS_TELCO_CLIENT_KEY") }, timeoutMs: Number(process.env["TS_TELCO_TIMEOUT_MS"] ?? 2000),
+  mtls: { ca: file("TS_TELCO_CA"), cert: file("TS_TELCO_CLIENT_CERT"), key: file("TS_TELCO_CLIENT_KEY"), allowPrivateAddresses: process.env["TS_ALLOW_LOOPBACK"] === "true" }, timeoutMs: Number(process.env["TS_TELCO_TIMEOUT_MS"] ?? 2000),
   resilience: { windowMs: 10_000, minRequests: 8, failureRate: 0.5, openMs: 15_000, maxConcurrent: 10 }, envAllowList: [], allowLoopback: process.env["TS_ALLOW_LOOPBACK"] === "true",
 });
 const app = await buildAdmin({ cfg, pool, audit, kms, log, registry });

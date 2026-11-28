@@ -12,7 +12,7 @@ Priority order when requirements conflict: **1 security, 2 privacy/regulatory, 3
 
 ## Status
 
-All milestones M0–M5 are implemented and merged to `main`; see [`docs/reports/`](docs/reports) for the evidence of each and
+All milestones M0–M5 are implemented and merged to `main`, followed by a self-conducted security audit and penetration test (M6, [report](docs/security/audit-and-pentest-report.md)); see [`docs/reports/`](docs/reports) for the evidence of each and
 [`docs/release/README.md`](docs/release/README.md) for the release-gate package (threat-model traceability, test and scan report, load results,
 SBOM, residual-risk register with proposed owners, runbooks).
 
@@ -25,6 +25,7 @@ SBOM, residual-risk register with proposed owners, runbooks).
 | M4a | Admin portal, two-person approval enforced in the database, onboarding | [M4a](docs/reports/M4a.md) |
 | M4b | Logs and traces, dashboards, alerts, retention, OpenAPI, developer portal, runbooks, tested restore | [M4b](docs/reports/M4b.md) |
 | M5 | Adversarial review (OWASP API Top 10 2023 + every threat-model entry), fixes, OpenTelemetry, 200 rps load test, release package | [M5](docs/reports/M5.md) |
+| M6 | Security audit (static, manual, database, CI/CD) and black-box penetration test; 11 defects fixed with regression tests. Self-conducted: not a substitute for an independent test | [report](docs/security/audit-and-pentest-report.md) |
 
 What is **not** done is listed, with proposed owners, in [`docs/release/residual-risks.md`](docs/release/residual-risks.md). The largest items: hosting for the
 participant mTLS endpoint (Vercel cannot terminate client certificates), data residency of Neon in Singapore, a real KMS/HSM, WAF/DDoS, an
@@ -77,7 +78,7 @@ Note: Postgres roles are cluster-wide, so running the test suite resets role pas
 |---|---|
 | `npm run typecheck` / `npm run lint` | TypeScript (strict) and ESLint |
 | `TS_TEST_ADMIN_URL=postgres://postgres:<pw>@127.0.0.1:5432/postgres npm test` | Full suite: fresh database per test file, real TLS/mTLS, mock telcos and IdP, real PKI |
-| `npm run dast`, `npm run dast:admin` | Black-box DAST against a running sandbox (own sandbox only) |
+| `npm run dast`, `npm run dast:admin`, `npm run pentest` | Black-box DAST and penetration test against a running sandbox (own sandbox only): functional abuse checks, TLS downgrade, raw HTTP abuse, slow clients, floods, parser attacks, injection, cross-tenant |
 | `npm run load` | Open-loop load test, default 200 rps for 60 s (`tests/load/run.ts`); see [load results](docs/release/load-results.md) |
 | `npm run gen:openapi`, `npm run gen:portal` | Regenerate the OpenAPI 3.1 document and the static developer portal (a test fails if they drift) |
 | `npm run gen:traceability` | Regenerate [`docs/release/traceability.md`](docs/release/traceability.md) |
@@ -111,7 +112,7 @@ scripts/ deploy/ docker/ .github/
 
 ## Where to look first
 
-* Reviewing security: [`docs/threat-model.md`](docs/threat-model.md) → [`docs/release/traceability.md`](docs/release/traceability.md) (each threat → the test that proves it) → [`docs/reports/M5.md`](docs/reports/M5.md).
+* Reviewing security: [`docs/security/audit-and-pentest-report.md`](docs/security/audit-and-pentest-report.md) (what was attacked, what was found, what was not tested) → [`docs/threat-model.md`](docs/threat-model.md) → [`docs/release/traceability.md`](docs/release/traceability.md) (each threat → the test that proves it) → [`docs/reports/M5.md`](docs/reports/M5.md).
 * Operating it: [`docs/runbooks/README.md`](docs/runbooks/README.md).
 * Integrating a bank or telco: the generated developer portal in `portal/` and [`openapi/participant.yaml`](openapi/participant.yaml).
 * Deciding what is next: [`docs/decisions-needed.md`](docs/decisions-needed.md) and [`docs/release/human-gates.md`](docs/release/human-gates.md).

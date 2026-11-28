@@ -153,9 +153,11 @@ jobs:
       - name: DAST - admin portal (SSO/MFA, sessions, CSRF, XSS, injection fuzz, two-person rule)
         env: { DAST_REPORT: dast-admin-report.json }
         run: npx tsx tests/dast/admin.ts .sandbox
+      - name: Penetration test - TLS downgrade, raw HTTP abuse, slow clients, floods, parser attacks, injection, cross-tenant
+        run: npx tsx tests/pentest/run.ts .sandbox 127.0.0.1 8443 pentest-report.json
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with: { name: dast-reports, path: "dast-report.json\ndast-admin-report.json\nplatform.log\nadmin.log\nidp.log\nmocks.log\nworker.log" }
+        with: { name: dast-reports, path: "dast-report.json\ndast-admin-report.json\npentest-report.json\nplatform.log\nadmin.log\nidp.log\nmocks.log\nworker.log" }
   gate:
     if: always()
     needs: [secret-scan, sast, codeql, dependency-scan, build-test, container-iac-scan, workflow-lint, dast]

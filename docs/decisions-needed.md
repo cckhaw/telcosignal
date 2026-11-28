@@ -10,3 +10,5 @@
 | D-006 | Standards texts (ASVS 5.0, FAPI 2.0, CAMARA, BNM RMiT Nov-2025, PDPA 2024, CSA 2024) | Verify | Marked **unverified** until fetched and read. |
 | D-007 | CAMARA specs must be pinned from camaraproject repos; if unreachable, stop. | Pending M1 | See compliance matrix / M1 gate. |
 | H-001 | Enable branch protection on main requiring the `gate` check (cannot be set from the session) | Owner says it is enabled | At my last check (M5) the API showed no classic protection on `main` and one ruleset, `Standard`, with enforcement `disabled`, no target branches and no required-status-check or pull-request rule. See `docs/reports/M5.md` for what to change. |
+| H-002 | GitHub environments for secrets: a collaborator with write access can read repository-level secrets by editing a workflow on a branch. Move `VERCEL_*` and the Neon `DATABASE_URL` into environments restricted to `main` with required reviewers (cannot be set from the session). | Needs repo owner | Open |
+| H-003 | Rotate the Neon database password (it was exposed once, see R-028) and update the `DATABASE_URL` GitHub secret and the Vercel/Neon integration. | Needs repo owner | Open |
