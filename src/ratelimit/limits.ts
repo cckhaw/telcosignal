@@ -12,15 +12,12 @@ export interface LimitConfig {
 }
 export const DEFAULT_LIMITS: LimitConfig = { perParticipantSignalPerMinute: 600, perTelcoPerSecond: 200, perSubjectPerHour: 20, perParticipantConsentPerMinute: 120, perSubjectLocationPerHour: 4, perSubjectLocationGlobalPerHour: 8 };
 
-/** Sliding-window counter (R-009): the current fixed window plus the previous window weighted by how much of it still overlaps the last `windowSec`.
- *  This removes the 2x burst at a window edge that a plain fixed window allows. Fails closed if the store is down. */
+/** Sliding-window limit (R-009): the number of attempts in the last `windowSec` seconds, counted exactly from a per-key log, must stay within `max`.
+ *  No window-edge burst (a fixed window allows up to 2x around its boundary; a weighted two-bucket approximation still allows it for bunched traffic).
+ *  Rejected attempts are recorded too, as before. Fails closed if the store is down. */
 async function hit(store: EphemeralStore, base: string, windowSec: number, max: number, now = Date.now()): Promise<boolean> {
-  const w = windowSec * 1000, b = Math.floor(now / w), frac = (now % w) / w;
-  try {
-    const cur = await store.incr(`${base}:${b}`, windowSec * 2 + 5);
-    const prev = await store.get(`${base}:${b - 1}`);
-    return cur + Math.floor(prev * (1 - frac)) <= max;
-  } catch { throw new ApiError("SERVICE_UNAVAILABLE", "limiter store unavailable (failing closed)"); }   // never silently unlimited
+  try { return (await store.slide(base, windowSec * 1000, now)) <= max; }
+  catch { throw new ApiError("SERVICE_UNAVAILABLE", "limiter store unavailable (failing closed)"); }   // never silently unlimited
 }
 export const __hitForTest = hit;
 

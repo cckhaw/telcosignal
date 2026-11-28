@@ -5,29 +5,34 @@ import { __hitForTest } from "../../src/ratelimit/limits.js";
 import type { EphemeralStore } from "../../src/common/store.js";
 
 function memStore(): EphemeralStore {
-  const m = new Map<string, number>();
-  return { setNx: async () => true, incr: async (k) => { m.set(k, (m.get(k) ?? 0) + 1); return m.get(k)!; }, get: async (k) => m.get(k) ?? 0, addToSet: async () => 0, close: async () => undefined };
+  const log = new Map<string, number[]>();
+  return {
+    setNx: async () => true, incr: async () => 1, addToSet: async () => 0, close: async () => undefined,
+    slide: async (k, windowMs, now) => { const a = (log.get(k) ?? []).filter((t) => t > now - windowMs); a.push(now); log.set(k, a); return a.length; },
+  };
 }
 
-describe("R-009: rate limits are sliding windows, not fixed windows", () => {
-  it("a burst split across a window edge is held to about one window's worth, not two", async () => {
-    const s = memStore(); let allowed = 0;
-    for (let i = 0; i < 10; i++) if (await __hitForTest(s, "t:a", 10, 10, 9_900)) allowed++;       // end of window 0
-    expect(allowed).toBe(10);
-    let second = 0;
-    for (let i = 0; i < 10; i++) if (await __hitForTest(s, "t:a", 10, 10, 10_100)) second++;       // start of window 1: almost all of window 0 still counts
-    expect(second).toBeLessThanOrEqual(2);                                                          // a fixed window would have allowed all 10 (20 in 0.2 s)
-  });
-  it("the allowance comes back as the old window slides away, and a quiet period resets it", async () => {
+describe("R-009: rate limits are exact sliding windows, not fixed windows", () => {
+  const burst = async (s: EphemeralStore, key: string, at: number, n = 10) => { let ok = 0; for (let i = 0; i < n; i++) if (await __hitForTest(s, key, 10, 10, at)) ok++; return ok; };
+  it("a burst split across a window edge is held to one window's worth, whichever way it is split", async () => {
     const s = memStore();
-    for (let i = 0; i < 10; i++) await __hitForTest(s, "t:b", 10, 10, 9_900);
-    expect(await __hitForTest(s, "t:b", 10, 10, 19_000)).toBe(true);        // 9 s into window 1: the 10 earlier requests now weigh about 1
+    expect(await burst(s, "t:a", 9_900)).toBe(10);                  // end of window 0
+    expect(await burst(s, "t:a", 10_100)).toBe(0);                  // start of window 1: a fixed window would allow all 10 again (20 in 0.2 s)
+    const u = memStore();
+    expect(await burst(u, "t:u", 1_000)).toBe(10);                  // early in window 0
+    expect(await burst(u, "t:u", 10_900)).toBe(0);                  // late in window 1, 9.9 s later: still inside the last 10 s (a weighted two-bucket approximation lets this through)
+    expect(await burst(u, "t:u", 11_100)).toBe(0);                  // 10.1 s after the first burst, but the attempts at 10.9 s still count
+  });
+  it("the allowance comes back exactly when the old events age out", async () => {
+    const s = memStore();
+    expect(await burst(s, "t:b", 5_000)).toBe(10);
+    expect(await burst(s, "t:b", 14_900, 1)).toBe(0);               // 9.9 s later: still full
     const q = memStore();
-    for (let i = 0; i < 10; i++) await __hitForTest(q, "t:c", 10, 10, 1_000);
-    expect(await __hitForTest(q, "t:c", 10, 10, 31_000)).toBe(true);        // two windows later nothing counts
+    expect(await burst(q, "t:c", 5_000)).toBe(10);
+    expect(await burst(q, "t:c", 15_100, 1)).toBe(1);               // 10.1 s later: free again
   });
   it("it still fails closed when the store is down", async () => {
-    const down: EphemeralStore = { ...memStore(), incr: async () => { throw new Error("down"); } };
+    const down: EphemeralStore = { ...memStore(), slide: async () => { throw new Error("down"); } };
     await expect(__hitForTest(down, "t:d", 10, 10)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   });
 });
