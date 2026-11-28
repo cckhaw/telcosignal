@@ -161,7 +161,7 @@ describe("each kind of high-risk change applies correctly, with real effect", ()
     expect(codes.filter((x) => x === 429).length).toBeGreaterThanOrEqual(2);
   });
   it("price plans are immutable once created and applied by assignment; invalid pricing is refused before a request exists", async () => {
-    const plan = { kind: "PRICE_PLAN", action: "create_plan", planId: "gold-v1", currency: "MYR", platformFeeMinor: "3", signalPrices: '{"SIM_SWAP":90,"KYC_MATCH":150}', tiers: '[{"upTo":10,"pct":100},{"upTo":null,"pct":70}]' };
+    const plan = { kind: "PRICE_PLAN", action: "create_plan", planId: "gold-v1", currency: "MYR", platformFeeMinor: "3", signalPrices: '{"SIM_SWAP":90,"DEVICE_SWAP":80,"CALL_FORWARDING":40,"KYC_MATCH":150,"NUMBER_RECYCLING":60,"KYC_TENURE":60,"DEVICE_LOCATION":150,"DEVICE_ROAMING":50}', tiers: '[{"upTo":10,"pct":100},{"upTo":null,"pct":70}]' };
     const p1 = idOf(await fiona.post("/changes/new", plan)); expect((await fiona.post(`/changes/${p1}/approve`, {})).status).toBe(403);
     expect((await alice.post(`/changes/${p1}/approve`, {})).status).toBe(302);
     expect((await h.migrator.query("SELECT platform_fee_minor f FROM price_plan WHERE id='gold-v1'")).rows[0].f).toBe(3);

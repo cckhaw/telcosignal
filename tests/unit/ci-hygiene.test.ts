@@ -30,4 +30,10 @@ describe("GitHub Actions workflows", () => {
     const steps = d.doc.jobs["deploy"]!.steps; const install = steps.findIndex((s) => /npm i(nstall)? -g/.test(s.run ?? "")); const firstSecret = steps.findIndex((s) => /secrets\./.test(JSON.stringify(s.env ?? {})));
     expect(install).toBeGreaterThanOrEqual(0); expect(install).toBeLessThan(firstSecret); expect(steps[install]!.run).toContain("--ignore-scripts"); expect(JSON.stringify(steps[install]!.env ?? {})).not.toMatch(/secrets\./);
   });
+  it("R-026: every external base image in the Dockerfile is pinned by digest (the tag stays for readability and for Dependabot)", () => {
+    const froms = readFileSync("docker/Dockerfile", "utf8").split("\n").filter((l) => /^FROM\s/.test(l));
+    const external = froms.filter((l) => !/^FROM\s+(base|build)\b/i.test(l));
+    expect(external.length).toBeGreaterThan(0);
+    for (const l of external) expect(l, l).toMatch(/^FROM\s+\S+:[\w.-]+@sha256:[0-9a-f]{64}(\s+AS\s+\w+)?$/i);
+  });
 });

@@ -274,7 +274,7 @@ export async function buildParticipantServer(d: Deps): Promise<FastifyInstance> 
       try {
         await d.limiter.participantSignal(org, def.signal);
         await d.limiter.subject(org, hash.toString("hex").slice(0, 32));
-        if (def.signal === "DEVICE_LOCATION") await d.limiter.locationSubject(org, hash.toString("hex").slice(0, 32));    // stops triangulation by repeated probes
+        if (def.signal === "DEVICE_LOCATION") { await d.limiter.locationSubject(org, hash.toString("hex").slice(0, 32)); await d.limiter.locationSubjectGlobal(hash.toString("hex").slice(0, 32)); }    // stops triangulation by repeated probes
       } catch (e) { if (e instanceof ApiError && e.code === "RATE_LIMITED") await meter("REJECTED", null, 0, "limit"); throw e; }
       lap(req, "limits");
       const consentOk = await withOrgTx(d.pool, org, (tx) => consentValid(tx, { consentRef: body.consentRef, subjectHash: hash, purpose: body.purposeCode, signal: def.signal }));

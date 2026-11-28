@@ -26,7 +26,7 @@ export interface Session {
 }
 export interface R { status: number; text: string; headers: Record<string, string | string[] | undefined>; location?: string }
 
-export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleMinutes?: number; reuseUsers?: boolean; perMinute?: number; loginPerMinute?: number } = {}): Promise<Admin> {
+export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleMinutes?: number; reuseUsers?: boolean; perMinute?: number; loginPerMinute?: number; rateLimitRedis?: import("ioredis").Redis } = {}): Promise<Admin> {
   const logs: string[] = [];
   const log = makeLogger("debug", new Writable({ write(c, _e, cb) { logs.push(String(c)); cb(); } }));
   const srvCert = h.pki.issue("admin-server", { server: true }), idpCert = h.pki.issue("idp-server", { server: true });
@@ -40,7 +40,7 @@ export async function startAdmin(h: Harness, o: { allowedCidrs?: string[]; idleM
   };
   // the portal's conformance runner uses the portal's OWN restricted role, exactly as in production
   const registry = new AdapterRegistry(staffScopedPool(pool), { mtls: { ca: h.pki.caCert, cert: h.platformOut.cert, key: h.platformOut.key, allowPrivateAddresses: true }, timeoutMs: 1500, resilience: DEFAULT_RESILIENCE, envAllowList: [], ttlMs: 50, allowLoopback: true });
-  const app = await buildAdmin({ cfg, pool, audit, kms: h.kms, log, registry });
+  const app = await buildAdmin({ cfg, pool, audit, kms: h.kms, log, registry, ...(o.rateLimitRedis ? { rateLimitRedis: o.rateLimitRedis } : {}) });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const port = (app.server.address() as { port: number }).port;
   cfg.origin = `https://localhost:${port}`; cfg.oidc.redirectUri = `${cfg.origin}/oidc/callback`; idp.setRedirect(cfg.oidc.redirectUri);

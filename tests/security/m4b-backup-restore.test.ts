@@ -17,7 +17,7 @@ beforeAll(async () => {
   h = await startHarness(); a = await startAdmin(h);
   const alice = await a.login("alice"), bob = await a.login("bob");
   for (let i = 0; i < 5; i++) { const n = num(i % 2 ? "1" : "0", `95${i}0`); const c = await h.consent(h.bankA, n); await h.call(h.bankA, "POST", "/v1/signals/sim-swap/check", { body: { phoneNumber: n, consentRef: c.ref, purposeCode: "FRAUD_PREVENTION" } }); }
-  await h.migrator.query("INSERT INTO price_plan(id,currency,platform_fee_minor,signal_price_minor,tiers) VALUES ('bk-plan','MYR',1,'{\"SIM_SWAP\":10}','[{\"upTo\":null,\"pct\":100}]')");
+  await h.migrator.query("INSERT INTO price_plan(id,currency,platform_fee_minor,signal_price_minor,tiers) VALUES ('bk-plan','MYR',1,'{\"SIM_SWAP\":10,\"DEVICE_SWAP\":10,\"CALL_FORWARDING\":10,\"KYC_MATCH\":10,\"NUMBER_RECYCLING\":10,\"KYC_TENURE\":10,\"DEVICE_LOCATION\":10,\"DEVICE_ROAMING\":10}','[{\"upTo\":null,\"pct\":100}]')");
   await h.migrator.query("INSERT INTO org_price_plan(org_id,plan_id,effective_from) VALUES ($1,'bk-plan', now() - interval '1 day')", [h.orgA]);
   await h.migrator.query("INSERT INTO telco_cost(telco_id,signal,cost_minor,effective_from) VALUES ('telco-a','SIM_SWAP',4, now() - interval '1 day')");
   await generateStatements(h.billing, { start: new Date(Date.now() - 3600e3), end: new Date(Date.now() + 3600e3) });

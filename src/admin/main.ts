@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { makeLogger } from "../common/log.js";
 import { makePool } from "../db/pool.js";
+import { RedisStore } from "../common/store.js";
 import { Audit } from "../audit/audit.js";
 import { LocalKms } from "../kms/local.js";
 import type { Kms } from "../kms/types.js";
@@ -34,7 +35,10 @@ const registry = new AdapterRegistry(staffScopedPool(pool), {
   mtls: { ca: file("TS_TELCO_CA"), cert: file("TS_TELCO_CLIENT_CERT"), key: file("TS_TELCO_CLIENT_KEY"), allowPrivateAddresses: process.env["TS_ALLOW_LOOPBACK"] === "true" }, timeoutMs: Number(process.env["TS_TELCO_TIMEOUT_MS"] ?? 2000),
   resilience: { windowMs: 10_000, minRequests: 8, failureRate: 0.5, openMs: 15_000, maxConcurrent: 10 }, envAllowList: [], allowLoopback: process.env["TS_ALLOW_LOOPBACK"] === "true",
 });
-const app = await buildAdmin({ cfg, pool, audit, kms, log, registry });
+// Shared request counters when a Redis URL is configured (R-015); otherwise per process, as before.
+const redisUrl = process.env["TS_REDIS_URL"];
+const store = redisUrl ? new RedisStore(redisUrl) : undefined;
+const app = await buildAdmin({ cfg, pool, audit, kms, log, registry, ...(store ? { rateLimitRedis: store.redis } : {}) });
 await app.listen({ port: Number(env("TS_ADMIN_PORT")), host: process.env["TS_ADMIN_BIND"] ?? "127.0.0.1" });
 log.info({ origin }, SANDBOX_BANNER);
-for (const sig of ["SIGTERM", "SIGINT"] as const) process.on(sig, () => { void (async () => { await app.close(); await registry.close(); await pool.end(); process.exit(0); })(); });
+for (const sig of ["SIGTERM", "SIGINT"] as const) process.on(sig, () => { void (async () => { await app.close(); await registry.close(); await store?.close(); await pool.end(); process.exit(0); })(); });

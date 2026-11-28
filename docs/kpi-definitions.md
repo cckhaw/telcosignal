@@ -27,4 +27,4 @@ Reconciliation (proved by tests in `m4b-dashboards-alerts`): dashboard totals, b
 | Active participants | distinct organisations with requests in the window | rollup_minute | 30 s | - |
 | Onboarding progress / signal coverage | organisations by state; covered (telco, signal) pairs on active telcos / possible (staff) | organisations, telco_signal_coverage | live | - |
 | Charges / telco cost | sum of statement totals within the window (only where statements have been generated); otherwise stated as unavailable | statement | on generation | placeholder prices |
-Limitations: availability is an approximation (the platform has no external prober); breaker state is per process; fixed-window limits and bucket-bound percentiles are coarse by design.
+Limitations: availability is an approximation (the platform has no external prober); breaker state is per process; the coarse per-second request guard is a fixed window (the quota counters are sliding windows) and limits and bucket-bound percentiles are coarse by design.

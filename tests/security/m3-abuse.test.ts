@@ -63,7 +63,7 @@ describe("quotas and rate limits (participant x signal, subject, telco)", () => 
   it("fails closed when the limiter store is unavailable (no telco call)", async () => {
     const { Redis } = await import("ioredis");
     const dead = new Redis("redis://127.0.0.1:1", { maxRetriesPerRequest: 0, enableOfflineQueue: false, lazyConnect: true, retryStrategy: () => null }); dead.on("error", () => undefined);
-    const bad = { setNx: async () => true, incr: async () => { throw new Error("down"); }, addToSet: async () => 0, close: async () => undefined };
+    const bad = { setNx: async () => true, incr: async () => { throw new Error("down"); }, get: async () => 0, addToSet: async () => 0, close: async () => undefined };
     const h = await startHarness({ store: bad });
     try {
       const n = num("0", "0430");
